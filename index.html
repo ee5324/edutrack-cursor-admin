@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduTrack Pro - 教學組事務管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Noto Sans TC', sans-serif;
+      }
+      
+      /* 強制列印樣式設定 */
+      @media print {
+        @page { 
+          size: A4 landscape; /* 強制橫向 A4 */
+          margin: 0.5cm;      /* 設定 0.5cm 邊界 */
+        }
+        
+        /* 隱藏所有不需要列印的元素 */
+        body * {
+          visibility: hidden;
+        }
+        
+        /* 隱藏帶有 no-print class 的元素 */
+        .no-print, .no-print * {
+          display: none !important;
+        }
+
+        /* 只顯示點名單區塊 */
+        #attendance-sheet-root, #attendance-sheet-root * {
+          visibility: visible;
+        }
+
+        /* 重設點名單位置，確保它尊重 margin 設定並等比例縮放 */
+        #attendance-sheet-root {
+          position: relative !important; /* 改為 relative 以遵循頁面邊距 */
+          left: 0;
+          top: 0;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+          background: white;
+
+          /* 等比例縮小 85% 以容納更多內容並符合 A4 邊界 */
+          zoom: 0.85; 
+          /* 針對 Firefox 的兼容 */
+          -moz-transform: scale(0.85);
+          -moz-transform-origin: top left;
+        }
+        
+        /* 確保表格框線清晰 */
+        table {
+          border-collapse: collapse !important;
+          width: 100% !important;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50 text-slate-900 h-full">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
