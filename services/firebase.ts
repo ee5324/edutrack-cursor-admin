@@ -5,7 +5,8 @@
  */
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getAuth, type Auth, type User } from 'firebase/auth';
+import { getAuth, type Auth } from 'firebase/auth';
+import { getAnalytics, type Analytics } from 'firebase/analytics';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,6 +15,7 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? undefined,
 };
 
 /** 集合名稱前綴，與其他系統隔離，預設 edutrack_（可於 .env 設 VITE_FIREBASE_COLLECTION_PREFIX） */
@@ -22,6 +24,7 @@ const COLLECTION_PREFIX = (import.meta.env.VITE_FIREBASE_COLLECTION_PREFIX ?? 'e
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
+let analytics: Analytics | null = null;
 
 export function getFirebaseApp(): FirebaseApp | null {
   if (!firebaseConfig.projectId) return null;
@@ -29,6 +32,15 @@ export function getFirebaseApp(): FirebaseApp | null {
     app = initializeApp(firebaseConfig);
   }
   return app;
+}
+
+/** 若有設定 VITE_FIREBASE_MEASUREMENT_ID 則回傳 Analytics 實例，供分析使用 */
+export function getAnalyticsInstance(): Analytics | null {
+  if (!getFirebaseApp() || !firebaseConfig.measurementId) return null;
+  if (!analytics) {
+    analytics = getAnalytics(app!);
+  }
+  return analytics;
 }
 
 export function getDb(): Firestore | null {
