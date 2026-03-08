@@ -8,14 +8,25 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getAnalytics, type Analytics } from 'firebase/analytics';
 
+/** 預設 Firebase 專案（與其他系統相同），Vercel 等部署不需再設環境變數；本機可用 .env 覆寫 */
+const defaultConfig = {
+  apiKey: 'AIzaSyBwlZOsjFegMLwgZn5DhczD_z-y-H2t7g4',
+  authDomain: 'jcpsacadamicsubteachpro.firebaseapp.com',
+  projectId: 'jcpsacadamicsubteachpro',
+  storageBucket: 'jcpsacadamicsubteachpro.firebasestorage.app',
+  messagingSenderId: '1054145930017',
+  appId: '1:1054145930017:web:774d79061ad1fc2c7e5460',
+  measurementId: 'G-R5K71QKQ5X',
+};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ?? undefined,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || defaultConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || defaultConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || defaultConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || defaultConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || defaultConfig.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || defaultConfig.measurementId || undefined,
 };
 
 /** 集合名稱前綴，與其他系統隔離，預設 edutrack_（可於 .env 設 VITE_FIREBASE_COLLECTION_PREFIX） */
