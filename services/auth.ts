@@ -2,6 +2,8 @@
  * Firebase Authentication：登入 / 登出 / 監聽登入狀態
  */
 import {
+  GoogleAuthProvider,
+  signInWithPopup,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged as firebaseOnAuthStateChanged,
@@ -20,6 +22,14 @@ export function signIn(email: string, password: string) {
   const auth = getAuthInstance();
   if (!auth) throw new Error('Firebase Auth 未初始化');
   return signInWithEmailAndPassword(auth, email, password);
+}
+
+export function signInWithGoogle() {
+  const auth = getAuthInstance();
+  if (!auth) throw new Error('Firebase Auth 未初始化');
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return signInWithPopup(auth, provider);
 }
 
 export function signOut() {

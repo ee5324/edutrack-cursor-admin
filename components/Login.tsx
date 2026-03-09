@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { LogIn, Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
-import { signIn } from '../services/auth';
+import { signIn, signInWithGoogle } from '../services/auth';
 
 interface LoginProps {
   onSuccess?: () => void;
@@ -9,7 +9,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loadingMethod, setLoadingMethod] = useState<'password' | 'google' | null>(null);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -19,7 +19,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
       setError('請輸入 Email 與密碼');
       return;
     }
-    setLoading(true);
+    setLoadingMethod('password');
     try {
       await signIn(email.trim(), password);
       onSuccess?.();
@@ -33,7 +33,29 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
         setError(err?.message || '登入失敗');
       }
     } finally {
-      setLoading(false);
+      setLoadingMethod(null);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setLoadingMethod('google');
+    try {
+      await signInWithGoogle();
+      onSuccess?.();
+    } catch (err: any) {
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user') {
+        setError('已取消 Google 登入');
+      } else if (code === 'auth/operation-not-allowed') {
+        setError('Firebase 尚未啟用 Google 登入，請到 Authentication > Sign-in method 開啟 Google');
+      } else if (code === 'auth/unauthorized-domain') {
+        setError('目前網域尚未加入 Firebase 授權網域，請到 Authentication > Settings > Authorized domains 加入');
+      } else {
+        setError(err?.message || 'Google 登入失敗');
+      }
+    } finally {
+      setLoadingMethod(null);
     }
   };
 
@@ -48,6 +70,31 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
         <h1 className="text-xl font-bold text-center text-slate-800 mb-1">教學組事務管理系統</h1>
         <p className="text-sm text-slate-500 text-center mb-6">請登入以繼續</p>
 
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loadingMethod !== null}
+          className="w-full mb-4 py-2.5 bg-white text-slate-700 font-medium rounded-lg border border-slate-300 hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center gap-3"
+        >
+          {loadingMethod === 'google' ? (
+            <Loader2 size={20} className="animate-spin" />
+          ) : (
+            <span className="w-5 h-5 rounded-full bg-white border border-slate-300 text-[11px] font-bold flex items-center justify-center">
+              G
+            </span>
+          )}
+          {loadingMethod === 'google' ? 'Google 登入中...' : '使用 Google 登入'}
+        </button>
+
+        <div className="relative mb-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-2 text-slate-400">或使用 Email 登入</span>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
@@ -60,7 +107,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 placeholder="your@email.com"
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none"
                 autoComplete="email"
-                disabled={loading}
+                disabled={loadingMethod !== null}
               />
             </div>
           </div>
@@ -75,7 +122,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
                 placeholder="••••••••"
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none"
                 autoComplete="current-password"
-                disabled={loading}
+                disabled={loadingMethod !== null}
               />
             </div>
           </div>
@@ -87,11 +134,11 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           )}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loadingMethod !== null}
             className="w-full py-2.5 bg-slate-800 text-white font-medium rounded-lg hover:bg-slate-900 disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? <Loader2 size={20} className="animate-spin" /> : <LogIn size={20} />}
-            {loading ? '登入中...' : '登入'}
+            {loadingMethod === 'password' ? <Loader2 size={20} className="animate-spin" /> : <LogIn size={20} />}
+            {loadingMethod === 'password' ? '登入中...' : '登入'}
           </button>
         </form>
       </div>
