@@ -11,9 +11,9 @@ const CampusMap: React.FC = () => {
               <MapPinned size={16} />
               校園平面圖
             </div>
-            <h2 className="mt-3 text-2xl lg:text-3xl font-bold text-slate-900">校園平面圖重繪版</h2>
+            <h2 className="mt-3 text-2xl lg:text-3xl font-bold text-slate-900">校園平面圖（渲染版）</h2>
             <p className="mt-2 text-slate-600 leading-7">
-              依照你提供的照片版面重新整理，保留原圖的建物相對位置、表格感與黃色樓名標籤，讓頁面看起來更接近平面圖原稿。
+              以渲染圖方式呈現，保留原稿的建物相對位置與樓名標籤，畫面穩定、所見即所得。
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 max-w-md">
@@ -53,7 +53,7 @@ const CampusMap: React.FC = () => {
           目前版本說明
         </div>
         <p className="mt-3 text-sm leading-7 text-slate-600">
-          這一版已改成接近你照片原稿的平面圖形式，而不是資訊卡。若你下一步要我再精修成更像原圖，例如逐格補完整教室名稱、樓層代碼、或把字的位置再校準，我可以直接在這張圖上繼續微調。
+          本頁採用單一渲染圖顯示，避免手刻格線造成的繪畫狀況不穩。若要更換為更高解析度或新版平面圖，只需替換 public 目錄下的圖檔即可。
         </p>
       </section>
     </div>
