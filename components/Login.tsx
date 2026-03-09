@@ -4,9 +4,10 @@ import { signIn, signInWithGoogle } from '../services/auth';
 
 interface LoginProps {
   onSuccess?: () => void;
+  externalError?: string;
 }
 
-const Login: React.FC<LoginProps> = ({ onSuccess }) => {
+const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loadingMethod, setLoadingMethod] = useState<'password' | 'google' | null>(null);
@@ -126,10 +127,10 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
               />
             </div>
           </div>
-          {error && (
+          {(externalError || error) && (
             <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
               <AlertCircle size={18} className="flex-shrink-0" />
-              <span>{error}</span>
+              <span>{externalError || error}</span>
             </div>
           )}
           <button

@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './components/Login';
+import AllowedUsersManager from './components/AllowedUsersManager';
 import AttendanceGenerator from './AttendanceGenerator';
 import TodoCalendar from './components/TodoCalendar';
+import CampusMap from './components/CampusMap';
 import AwardGenerator from './AwardGenerator'; 
 import VendorManager from './VendorManager'; 
 import ArchiveManager from './ArchiveManager';
-import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy } from 'lucide-react';
+import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck } from 'lucide-react';
 import { setupSystem, getArchiveTasks } from './services/api';
 import { migrateSheetToFirebase } from './services/migrateSheetToFirebase';
 import { onAuthStateChanged, signOut } from './services/auth';
 import { isSandbox } from './services/sandboxStore';
 import type { User } from 'firebase/auth';
+import type { AllowedUser } from './types';
+import { getAllowedUser } from './services/allowedUsers';
 
-const SettingsTab = () => {
+interface SettingsTabProps {
+    currentUser: User | null;
+    currentAccess: AllowedUser | null;
+}
+
+const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error', msg: string[], raw?: string } | null>(null);
     const [migrating, setMigrating] = useState(false);
@@ -53,7 +62,7 @@ const SettingsTab = () => {
     };
 
     return (
-        <div className="max-w-2xl mx-auto py-10 space-y-8">
+        <div className="max-w-5xl mx-auto py-10 space-y-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
                 <Settings className="mr-2" /> 系統設定
             </h2>
@@ -133,6 +142,24 @@ const SettingsTab = () => {
                     {isLoading ? '系統設定中...' : '開始快速設定'}
                 </button>
             </div>
+
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-start gap-4 mb-6">
+                    <div className="bg-violet-100 p-3 rounded-full">
+                        <ShieldCheck className="w-6 h-6 text-violet-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Google 登入白名單</h3>
+                        <p className="text-gray-500 text-sm mt-1">
+                            使用 Firestore 的 <code>edutrack_allowed_users</code> 集合管理可登入帳號。第一次請先到 Firebase Console 手動建立一位管理員文件，之後即可在系統內新增、停用或移除名單。
+                        </p>
+                    </div>
+                </div>
+                <AllowedUsersManager
+                    currentUserEmail={currentUser?.email}
+                    canManage={currentAccess?.role === 'admin' && currentAccess.enabled}
+                />
+            </div>
         </div>
     );
 };
@@ -142,6 +169,9 @@ const App: React.FC = () => {
   const [archiveCount, setArchiveCount] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessUser, setAccessUser] = useState<AllowedUser | null>(null);
+  const [loginError, setLoginError] = useState('');
 
   // 監聽登入狀態（Sandbox 模式不檢查登入）
   useEffect(() => {
@@ -155,6 +185,52 @@ const App: React.FC = () => {
     });
     return () => { unsubscribe?.(); };
   }, []);
+
+  useEffect(() => {
+    if (isSandbox()) {
+      setAccessLoading(false);
+      setAccessUser(null);
+      setLoginError('');
+      return;
+    }
+
+    if (!user?.email) {
+      setAccessLoading(false);
+      setAccessUser(null);
+      return;
+    }
+
+    let cancelled = false;
+    const verifyAccess = async () => {
+      setAccessLoading(true);
+      try {
+        const allowedUser = await getAllowedUser(user.email!);
+        if (cancelled) return;
+
+        if (!allowedUser || !allowedUser.enabled) {
+          setAccessUser(null);
+          setLoginError(`帳號 ${user.email} 尚未加入登入白名單，請聯絡管理員。`);
+          await signOut();
+          return;
+        }
+
+        setAccessUser(allowedUser);
+        setLoginError('');
+      } catch (error: any) {
+        if (cancelled) return;
+        setAccessUser(null);
+        setLoginError(error?.message || '無法驗證登入白名單');
+        await signOut();
+      } finally {
+        if (!cancelled) setAccessLoading(false);
+      }
+    };
+
+    verifyAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // Fetch archive count when logged in
   useEffect(() => {
@@ -178,6 +254,8 @@ const App: React.FC = () => {
         return <TodoCalendar />;
       case 'attendance':
         return <AttendanceGenerator />;
+      case 'campus-map':
+        return <CampusMap />;
       case 'awards':
         return <AwardGenerator />;
       case 'vendors':
@@ -185,13 +263,13 @@ const App: React.FC = () => {
       case 'archive':
         return <ArchiveManager onTasksChange={setArchiveCount} />;
       case 'settings':
-        return <SettingsTab />;
+        return <SettingsTab currentUser={user} currentAccess={accessUser} />;
       default:
         return <TodoCalendar />;
     }
   };
 
-  if (authLoading) {
+  if (authLoading || (!isSandbox() && user && accessLoading)) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <Loader2 size={32} className="animate-spin text-slate-600" />
@@ -200,7 +278,7 @@ const App: React.FC = () => {
   }
 
   if (!isSandbox() && !user) {
-    return <Login />;
+    return <Login externalError={loginError} />;
   }
 
   return (

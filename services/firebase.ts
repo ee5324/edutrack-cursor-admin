@@ -78,6 +78,7 @@ export const COLLECTIONS = {
   VENDORS: `${COLLECTION_PREFIX}vendors`,
   ARCHIVE: `${COLLECTION_PREFIX}archive`,
   TODOS: `${COLLECTION_PREFIX}todos`,
+  ALLOWED_USERS: `${COLLECTION_PREFIX}allowed_users`,
 } as const;
 
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */

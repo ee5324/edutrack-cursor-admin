@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map } from 'lucide-react';
 import { isSandbox } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -18,6 +18,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
   const menuItems = [
     { id: 'calendar', label: '行政行事曆', icon: CalendarDays },
     { id: 'attendance', label: '本土語點名單', icon: ClipboardList },
+    { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
     { id: 'vendors', label: '廠商管理', icon: Store },
     { id: 'archive', label: '事項列檔', icon: Archive, badge: archiveCount },

@@ -119,6 +119,17 @@ export interface ArchiveTask {
   updatedAt: string; // 最後更新時間
 }
 
+export interface AllowedUser {
+  email: string;
+  enabled: boolean;
+  role: 'admin' | 'member';
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
 export type NotificationType = 'success' | 'error' | 'info';
 
 export interface ModalProps {
