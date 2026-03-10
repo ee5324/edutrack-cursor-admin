@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { LogIn, Loader2, Mail, Lock, AlertCircle } from 'lucide-react';
+import { LogIn, Loader2, Mail, Lock, AlertCircle, KeyRound } from 'lucide-react';
 import { signIn, signInWithGoogle } from '../services/auth';
+import { TEST_PIN, setPinBypass } from '../services/sandboxStore';
 
 interface LoginProps {
   onSuccess?: () => void;
@@ -12,6 +13,8 @@ const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
   const [password, setPassword] = useState('');
   const [loadingMethod, setLoadingMethod] = useState<'password' | 'google' | null>(null);
   const [error, setError] = useState('');
+  const [pinInput, setPinInput] = useState('');
+  const isDev = import.meta.env.DEV;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +63,19 @@ const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
     }
   };
 
+  /** 測試階段：PIN 正確則以 Sandbox 同源流程快速進入（僅 DEV） */
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!isDev) return;
+    if (pinInput.trim() !== TEST_PIN) {
+      setError('PIN 錯誤');
+      return;
+    }
+    setPinBypass(true);
+    window.location.reload();
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-xl shadow-lg border border-slate-200 p-8">
@@ -70,6 +86,36 @@ const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
         </div>
         <h1 className="text-xl font-bold text-center text-slate-800 mb-1">教學組事務管理系統</h1>
         <p className="text-sm text-slate-500 text-center mb-6">請登入以繼續</p>
+
+        {/* 測試階段：PIN 顯示在此，快速進入（僅開發模式） */}
+        {isDev && (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+            <p className="font-medium flex items-center gap-2">
+              <KeyRound size={16} />
+              測試階段快速登入
+            </p>
+            <p className="mt-1 text-amber-800">
+              PIN 測試碼：<span className="font-mono font-bold tracking-widest select-all">{TEST_PIN}</span>
+            </p>
+            <form onSubmit={handlePinSubmit} className="mt-2 flex gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="輸入 PIN"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className="flex-1 min-w-0 px-3 py-2 border border-amber-300 rounded-lg text-slate-800 placeholder:text-amber-600/50"
+              />
+              <button
+                type="submit"
+                className="px-3 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium whitespace-nowrap"
+              >
+                進入
+              </button>
+            </form>
+          </div>
+        )}
 
         <button
           type="button"

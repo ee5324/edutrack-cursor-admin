@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, Printer, Save, History, RotateCcw, X, Loader2, Clipboard, Search, UserPlus, FileText, ChevronDown, Lock, Unlock, Users, ListFilter, Upload, LayoutList } from 'lucide-react';
-import { AwardRecord, AwardStudent } from './types';
+import { AwardRecord, AwardStudent, AwardExportOptions } from './types';
 import AwardNotification from './components/AwardNotification';
 import Modal from './components/Modal';
 import * as XLSX from 'xlsx';
@@ -222,6 +222,16 @@ const AwardGenerator: React.FC = () => {
 
     const [isExporting, setIsExporting] = useState(false);
     const [isExportingSummary, setIsExportingSummary] = useState(false);
+    /** 輸出整併設定：總通知單／總表是否整併為單一 Doc */
+    const [mergeNotificationSingleDoc, setMergeNotificationSingleDoc] = useState(false);
+    const [mergeSummarySingleDoc, setMergeSummarySingleDoc] = useState(false);
+    const [mergedDocTitleSuffix, setMergedDocTitleSuffix] = useState('');
+
+    const buildExportOptions = (): AwardExportOptions => ({
+        mergeNotificationSingleDoc,
+        mergeSummarySingleDoc,
+        mergedDocTitleSuffix: mergedDocTitleSuffix.trim() || undefined,
+    });
 
     const handleExportDoc = async () => {
         if (parsedStudents.length === 0) return;
@@ -231,7 +241,8 @@ const AwardGenerator: React.FC = () => {
                 date,
                 time,
                 title,
-                students: parsedStudents
+                students: parsedStudents,
+                exportOptions: buildExportOptions(),
             };
             
             const result = await createAwardDocs(payload);
@@ -246,7 +257,11 @@ const AwardGenerator: React.FC = () => {
                 ));
                 showModal('輸出成功', (
                     <div>
-                        <p className="mb-4">已依照高中低年級產生 Google Doc 通知單，請點擊連結查看：</p>
+                        <p className="mb-4">
+                            {mergeNotificationSingleDoc
+                                ? '已產生「總通知單」整併 Doc（低中高分年級合併，年級段間分頁），請點擊連結查看：'
+                                : '已依照高中低年級產生 Google Doc 通知單，請點擊連結查看：'}
+                        </p>
                         {links}
                     </div>
                 ), 'success');
@@ -268,7 +283,8 @@ const AwardGenerator: React.FC = () => {
                 date,
                 time,
                 title,
-                students: parsedStudents
+                students: parsedStudents,
+                exportOptions: buildExportOptions(),
             };
             
             const result = await createAwardSummaryDocs(payload);
@@ -286,7 +302,11 @@ const AwardGenerator: React.FC = () => {
                 ));
                 showModal('輸出成功', (
                     <div>
-                        <p className="mb-4">已依照高中低年級產生 Google Doc 獲獎總表，請點擊連結查看：</p>
+                        <p className="mb-4">
+                            {mergeSummarySingleDoc
+                                ? '已產生「總表」整併 Doc（全年級段合併，獎項仍分區；年級段間分頁），請點擊連結查看：'
+                                : '已依照高中低年級產生 Google Doc 獲獎總表，請點擊連結查看：'}
+                        </p>
                         {links}
                     </div>
                 ), 'success');
@@ -732,6 +752,45 @@ const AwardGenerator: React.FC = () => {
                     </div>
 
                     <div className="p-4 border-t bg-gray-50 flex flex-col gap-3">
+                         <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                             <div className="text-xs font-bold text-gray-600 flex items-center gap-1">
+                                 <LayoutList size={14}/> 輸出設定（整併）
+                             </div>
+                             <label className="flex items-start gap-2 cursor-pointer text-sm">
+                                 <input
+                                     type="checkbox"
+                                     checked={mergeNotificationSingleDoc}
+                                     onChange={(e) => setMergeNotificationSingleDoc(e.target.checked)}
+                                     className="mt-0.5"
+                                 />
+                                 <span>
+                                     <span className="font-medium text-gray-800">總通知單整併</span>
+                                     <span className="block text-gray-500 text-xs mt-0.5">不同年級段不成多份 Doc，改為一份「總通知單」，年級段之間自動分頁。</span>
+                                 </span>
+                             </label>
+                             <label className="flex items-start gap-2 cursor-pointer text-sm">
+                                 <input
+                                     type="checkbox"
+                                     checked={mergeSummarySingleDoc}
+                                     onChange={(e) => setMergeSummarySingleDoc(e.target.checked)}
+                                     className="mt-0.5"
+                                 />
+                                 <span>
+                                     <span className="font-medium text-gray-800">總表整併</span>
+                                     <span className="block text-gray-500 text-xs mt-0.5">不同獎項仍分區塊顯示，但全年級做進同一份總表 Doc，方便存檔與列印。</span>
+                                 </span>
+                             </label>
+                             <div>
+                                 <label className="block text-xs text-gray-500 mb-1">整併檔名後綴（選填）</label>
+                                 <input
+                                     type="text"
+                                     value={mergedDocTitleSuffix}
+                                     onChange={(e) => setMergedDocTitleSuffix(e.target.value)}
+                                     placeholder="例如：語文競賽合併"
+                                     className="w-full border rounded px-2 py-1 text-sm"
+                                 />
+                             </div>
+                         </div>
                          <div className="flex items-center gap-2 text-gray-500 text-xs">
                              <ListFilter size={14}/>
                              <span>產生後可在預覽畫面切換年級篩選</span>

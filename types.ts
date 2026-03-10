@@ -17,6 +17,16 @@ export interface AwardStudent {
   awardName: string;
 }
 
+/** 頒獎 Doc 輸出選項（給 GAS / 整併用） */
+export interface AwardExportOptions {
+  /** true = 低中高分年級整併為一份「總通知單」Doc；false = 維持每年級段各一份 */
+  mergeNotificationSingleDoc?: boolean;
+  /** true = 低中高分年級整併為一份「總表」Doc；false = 維持每年級段各一份 */
+  mergeSummarySingleDoc?: boolean;
+  /** 整併時自訂檔名前綴（可選） */
+  mergedDocTitleSuffix?: string;
+}
+
 // 頒獎紀錄資料
 export interface AwardRecord {
   id?: string;
@@ -25,6 +35,8 @@ export interface AwardRecord {
   title: string;
   students: AwardStudent[];
   createdAt?: string;
+  /** 輸出 Google Doc 時的整併等細節（選填） */
+  exportOptions?: AwardExportOptions;
 }
 
 // 課程資料

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map } from 'lucide-react';
-import { isSandbox } from '../services/sandboxStore';
+import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
 interface LayoutProps {
@@ -114,10 +114,24 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
         </header>
 
         {isSandbox() && (
-          <div className="flex-shrink-0 bg-amber-100 border-b border-amber-300 px-4 py-2 flex items-center gap-2 text-amber-800 text-sm no-print">
+          <div className="flex-shrink-0 bg-amber-100 border-b border-amber-300 px-4 py-2 flex flex-wrap items-center gap-2 text-amber-800 text-sm no-print">
             <FlaskConical size={18} />
-            <span className="font-medium">Sandbox 模式</span>
+            <span className="font-medium">
+              {import.meta.env.VITE_SANDBOX === 'true' ? 'Sandbox 模式' : 'PIN 測試模式'}
+            </span>
             <span className="text-amber-700">— 資料僅存於記憶體。</span>
+            {isPinBypassActive() && import.meta.env.VITE_SANDBOX !== 'true' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPinBypass(false);
+                  window.location.reload();
+                }}
+                className="ml-auto px-2 py-1 rounded bg-amber-600 text-white text-xs font-medium hover:bg-amber-700"
+              >
+                結束測試（回登入）
+              </button>
+            )}
           </div>
         )}
 

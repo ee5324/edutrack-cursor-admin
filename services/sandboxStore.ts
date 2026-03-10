@@ -442,6 +442,31 @@ export function mockGasPost(
   }
 }
 
+/** 測試階段 PIN：輸入後與 Sandbox 相同快速進入（僅 DEV 有效，勿用於正式站） */
+export const TEST_PIN = '5012';
+const PIN_BYPASS_STORAGE_KEY = 'edutrack_pin_bypass_ok';
+
+export function isPinBypassActive(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    return sessionStorage.getItem(PIN_BYPASS_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** 設定／清除 PIN 測試登入（僅 DEV） */
+export function setPinBypass(active: boolean): void {
+  if (!import.meta.env.DEV) return;
+  try {
+    if (active) sessionStorage.setItem(PIN_BYPASS_STORAGE_KEY, '1');
+    else sessionStorage.removeItem(PIN_BYPASS_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function isSandbox(): boolean {
-  return import.meta.env.VITE_SANDBOX === 'true';
+  if (import.meta.env.VITE_SANDBOX === 'true') return true;
+  return isPinBypassActive();
 }

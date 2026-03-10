@@ -3,6 +3,10 @@
  */
 
 function createAwardDocs(payload) {
+  var opts = payload.exportOptions || {};
+  if (opts.mergeNotificationSingleDoc) {
+    return createAwardDocsMerged(payload);
+  }
   const { date, time, title, students } = payload;
   const folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
   
@@ -151,10 +155,113 @@ function createAwardDocs(payload) {
 }
 
 /**
+ * 整併版：低中高分年級全部做進同一份「總通知單」Doc（年級段之間分頁）
+ */
+function createAwardDocsMerged(payload) {
+  const { date, time, title, students } = payload;
+  const opts = payload.exportOptions || {};
+  const folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
+  const categories = {
+    'low': { name: '低年級', students: [] },
+    'mid': { name: '中年級', students: [] },
+    'high': { name: '高年級', students: [] },
+    'other': { name: '其他', students: [] }
+  };
+  students.forEach(function (s) {
+    const grade = getGradeFromClassName(s.className);
+    if (grade === 1 || grade === 2) categories.low.students.push(s);
+    else if (grade === 3 || grade === 4) categories.mid.students.push(s);
+    else if (grade === 5 || grade === 6) categories.high.students.push(s);
+    else categories.other.students.push(s);
+  });
+  const suffix = opts.mergedDocTitleSuffix ? ' ' + opts.mergedDocTitleSuffix : '';
+  const docName = '[頒獎通知·總單] ' + title + suffix + ' - ' + date;
+  const doc = DocumentApp.create(docName);
+  const docFile = DriveApp.getFileById(doc.getId());
+  folder.addFile(docFile);
+  DriveApp.getRootFolder().removeFile(docFile);
+  const body = doc.getBody();
+  const attributes = {};
+  attributes[DocumentApp.Attribute.MARGIN_TOP] = 28.3;
+  attributes[DocumentApp.Attribute.MARGIN_BOTTOM] = 28.3;
+  attributes[DocumentApp.Attribute.MARGIN_LEFT] = 42.5;
+  attributes[DocumentApp.Attribute.MARGIN_RIGHT] = 42.5;
+  body.setAttributes(attributes);
+
+  const order = ['low', 'mid', 'high', 'other'];
+  let firstCategory = true;
+  order.forEach(function (key) {
+    const cat = categories[key];
+    if (cat.students.length === 0) return;
+    if (!firstCategory) body.appendPageBreak();
+    firstCategory = false;
+    const sectionTitle = body.appendParagraph('══ ' + cat.name + ' ══');
+    sectionTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    sectionTitle.setFontSize(14).setBold(true).setSpacingAfter(12);
+
+    const classMap = {};
+    cat.students.forEach(function (s) {
+      if (!classMap[s.className]) classMap[s.className] = [];
+      classMap[s.className].push(s);
+    });
+    const sortedClasses = Object.keys(classMap).sort(function (a, b) {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
+    sortedClasses.forEach(function (className, index) {
+      const label = body.appendParagraph('頒獎通知 (' + cat.name + ')');
+      label.setAlignment(DocumentApp.HorizontalAlignment.CENTER).setFontSize(12).setBold(true);
+      const mainTitle = body.appendParagraph(title);
+      mainTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER).setFontSize(22).setBold(true).setSpacingBefore(8);
+      const dateTime = body.appendParagraph('頒獎日期：' + date + ' ' + (time || ''));
+      dateTime.setAlignment(DocumentApp.HorizontalAlignment.CENTER).setFontSize(14).setSpacingAfter(16);
+      const greeting = body.appendParagraph(className + ' 班導師 您好：');
+      greeting.setFontSize(14).setBold(true).setSpacingAfter(10);
+      const content = body.appendParagraph('貴班下列學生表現優異，將於 ' + date + ' ' + (time || '') + ' ' + title + ' 進行公開表揚，敬請 惠予協助提醒學生準時出席受獎。');
+      content.setFontSize(12).setIndentFirstLine(24).setSpacingAfter(15);
+      const tableData = [['姓名', '獲獎項目 / 榮譽']];
+      classMap[className].forEach(function (s) {
+        tableData.push([s.name, s.awardName]);
+      });
+      const table = body.appendTable(tableData);
+      table.setBorderWidth(1);
+      for (var r = 0; r < table.getNumRows(); r++) {
+        const row = table.getRow(r);
+        for (var c = 0; c < row.getNumCells(); c++) {
+          const cell = row.getCell(c);
+          cell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+          const para = cell.getChild(0).asParagraph();
+          para.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+          if (r === 0) {
+            cell.setBackgroundColor('#F3F3F3');
+            para.setBold(true);
+          } else if (c === 0) para.setBold(true).setFontSize(14);
+        }
+      }
+      const footer = body.appendParagraph('教學組 敬啟');
+      footer.setAlignment(DocumentApp.HorizontalAlignment.RIGHT).setFontSize(16).setBold(true).setSpacingBefore(16);
+      const printDate = body.appendParagraph('製表日期：' + Utilities.formatDate(new Date(), 'GMT+8', 'yyyy/MM/dd'));
+      printDate.setAlignment(DocumentApp.HorizontalAlignment.RIGHT).setFontSize(10);
+      if (index < sortedClasses.length - 1) body.appendPageBreak();
+    });
+  });
+  doc.saveAndClose();
+  return {
+    success: true,
+    docs: [{ category: '總通知單', url: doc.getUrl(), name: docName }]
+  };
+}
+
+/**
  * 產生頒獎總表 Google Doc (依獎項分類，再依班級排序)
  */
 function createAwardSummaryDocs(payload) {
   try {
+    var opts = payload.exportOptions || {};
+    if (opts.mergeSummarySingleDoc) {
+      return createAwardSummaryDocsMerged(payload);
+    }
     const { date, time, title, students } = payload;
     
     if (!ROOT_FOLDER_ID) {
@@ -281,6 +388,101 @@ function createAwardSummaryDocs(payload) {
   } catch (e) {
     return { success: false, message: e.toString() };
   }
+}
+
+/**
+ * 整併版總表：低中高分年級全部做進同一份 Doc（年級段之間分頁），獎項仍依區塊分組
+ */
+function createAwardSummaryDocsMerged(payload) {
+  const { date, time, title, students } = payload;
+  const opts = payload.exportOptions || {};
+  if (!ROOT_FOLDER_ID) throw new Error('ROOT_FOLDER_ID 未設定');
+  const folder = DriveApp.getFolderById(ROOT_FOLDER_ID);
+  const categories = {
+    'low': { name: '低年級', students: [] },
+    'mid': { name: '中年級', students: [] },
+    'high': { name: '高年級', students: [] },
+    'other': { name: '其他', students: [] }
+  };
+  students.forEach(function (s) {
+    const grade = getGradeFromClassName(s.className);
+    if (grade === 1 || grade === 2) categories.low.students.push(s);
+    else if (grade === 3 || grade === 4) categories.mid.students.push(s);
+    else if (grade === 5 || grade === 6) categories.high.students.push(s);
+    else categories.other.students.push(s);
+  });
+  const suffix = opts.mergedDocTitleSuffix ? ' ' + opts.mergedDocTitleSuffix : '';
+  const docName = '[獲獎總表·整併] ' + title + suffix + ' - ' + date;
+  const doc = DocumentApp.create(docName);
+  const docFile = DriveApp.getFileById(doc.getId());
+  folder.addFile(docFile);
+  DriveApp.getRootFolder().removeFile(docFile);
+  const body = doc.getBody();
+  const attributes = {};
+  attributes[DocumentApp.Attribute.MARGIN_TOP] = 40;
+  attributes[DocumentApp.Attribute.MARGIN_BOTTOM] = 40;
+  attributes[DocumentApp.Attribute.MARGIN_LEFT] = 50;
+  attributes[DocumentApp.Attribute.MARGIN_RIGHT] = 50;
+  body.setAttributes(attributes);
+
+  const mainTitle = body.appendParagraph(title + ' — 獲獎總表（整併）');
+  mainTitle.setAlignment(DocumentApp.HorizontalAlignment.CENTER).setFontSize(22).setBold(true);
+  const dateTime = body.appendParagraph('頒獎日期：' + date + ' ' + (time || ''));
+  dateTime.setAlignment(DocumentApp.HorizontalAlignment.CENTER).setFontSize(14).setSpacingAfter(20);
+
+  const order = ['low', 'mid', 'high', 'other'];
+  let firstCategory = true;
+  order.forEach(function (key) {
+    const cat = categories[key];
+    if (cat.students.length === 0) return;
+    if (!firstCategory) body.appendPageBreak();
+    firstCategory = false;
+    const sectionTitle = body.appendParagraph('■ ' + cat.name);
+    sectionTitle.setFontSize(18).setBold(true).setSpacingAfter(12);
+
+    const awards = [];
+    const seen = {};
+    cat.students.forEach(function (s) {
+      if (!seen[s.awardName]) {
+        seen[s.awardName] = true;
+        awards.push(s.awardName);
+      }
+    });
+    awards.forEach(function (award) {
+      const awardTitle = body.appendParagraph('🏆 ' + award);
+      awardTitle.setFontSize(16).setBold(true).setBackgroundColor('#F0F4F8').setSpacingBefore(12).setSpacingAfter(8);
+      const studentsInAward = cat.students.filter(function (s) { return s.awardName === award; });
+      const classMap = {};
+      studentsInAward.forEach(function (s) {
+        if (!classMap[s.className]) classMap[s.className] = [];
+        classMap[s.className].push(s.name);
+      });
+      const sortedClasses = Object.keys(classMap).sort(function (a, b) {
+        const numA = parseInt(a.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.replace(/\D/g, '')) || 0;
+        if (numA !== numB) return numA - numB;
+        return a.localeCompare(b);
+      });
+      const table = body.appendTable();
+      table.setBorderWidth(1);
+      table.setBorderColor('#CCCCCC');
+      sortedClasses.forEach(function (cls) {
+        const row = table.appendTableRow();
+        const classCell = row.appendTableCell(cls);
+        classCell.setWidth(80).setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER).setBackgroundColor('#FAFAFA');
+        classCell.getChild(0).asParagraph().setAlignment(DocumentApp.HorizontalAlignment.CENTER).setBold(true);
+        const nameCell = row.appendTableCell(classMap[cls].join('、'));
+        nameCell.setVerticalAlignment(DocumentApp.VerticalAlignment.CENTER);
+        nameCell.getChild(0).asParagraph().setLineSpacing(1.5);
+      });
+      body.appendParagraph('');
+    });
+  });
+
+  const footer = body.appendParagraph('製表日期：' + Utilities.formatDate(new Date(), 'GMT+8', 'yyyy/MM/dd'));
+  footer.setAlignment(DocumentApp.HorizontalAlignment.RIGHT).setFontSize(10).setSpacingBefore(20);
+  doc.saveAndClose();
+  return { success: true, docs: [{ category: '總表整併', url: doc.getUrl(), name: docName }] };
 }
 
 /**
