@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, Loader2, Mail, Lock, AlertCircle, KeyRound } from 'lucide-react';
 import { signIn, signInWithGoogle } from '../services/auth';
-import { TEST_PIN, setPinBypass } from '../services/sandboxStore';
+import { TEST_PIN, setPinBypass, isPinUiEnabled } from '../services/sandboxStore';
 
 interface LoginProps {
   onSuccess?: () => void;
@@ -15,6 +15,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
   const [error, setError] = useState('');
   const [pinInput, setPinInput] = useState('');
   const isDev = import.meta.env.DEV;
+  const showPinBlock = isDev && isPinUiEnabled();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,7 +68,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!isDev) return;
+    if (!showPinBlock) return;
     if (pinInput.trim() !== TEST_PIN) {
       setError('PIN 錯誤');
       return;
@@ -87,8 +88,8 @@ const Login: React.FC<LoginProps> = ({ onSuccess, externalError }) => {
         <h1 className="text-xl font-bold text-center text-slate-800 mb-1">教學組事務管理系統</h1>
         <p className="text-sm text-slate-500 text-center mb-6">請登入以繼續</p>
 
-        {/* 測試階段：PIN 顯示在此，快速進入（僅開發模式） */}
-        {isDev && (
+        {/* 測試階段：PIN 由系統設定開關控制，僅開發模式 */}
+        {showPinBlock && (
           <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm">
             <p className="font-medium flex items-center gap-2">
               <KeyRound size={16} />

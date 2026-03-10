@@ -8,11 +8,11 @@ import CampusMap from './components/CampusMap';
 import AwardGenerator from './AwardGenerator'; 
 import VendorManager from './VendorManager'; 
 import ArchiveManager from './ArchiveManager';
-import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck } from 'lucide-react';
+import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound } from 'lucide-react';
 import { setupSystem, getArchiveTasks } from './services/api';
 import { migrateSheetToFirebase } from './services/migrateSheetToFirebase';
 import { onAuthStateChanged, signOut } from './services/auth';
-import { isSandbox } from './services/sandboxStore';
+import { isSandbox, isPinBypassActive, isPinUiEnabled, setPinUiEnabled, setPinBypass, TEST_PIN } from './services/sandboxStore';
 import type { User } from 'firebase/auth';
 import type { AllowedUser } from './types';
 import { getAllowedUser } from './services/allowedUsers';
@@ -23,6 +23,21 @@ interface SettingsTabProps {
 }
 
 const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess }) => {
+    const isDev = import.meta.env.DEV;
+    const [pinUiEnabled, setPinUiEnabledState] = useState(() => isPinUiEnabled());
+    const [pinBypassActive, setPinBypassActiveState] = useState(() => isPinBypassActive());
+
+    const togglePinUi = (enabled: boolean) => {
+        setPinUiEnabled(enabled);
+        setPinUiEnabledState(enabled);
+    };
+
+    const exitPinBypass = () => {
+        setPinBypass(false);
+        setPinBypassActiveState(false);
+        window.location.reload();
+    };
+
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error', msg: string[], raw?: string } | null>(null);
     const [migrating, setMigrating] = useState(false);
@@ -66,6 +81,58 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
             <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
                 <Settings className="mr-2" /> 系統設定
             </h2>
+
+            {/* 測試 PIN 開關（僅開發模式顯示） */}
+            {isDev && (
+                <div className="bg-white rounded-lg shadow-sm border border-amber-200 p-6">
+                    <div className="flex items-start gap-4 mb-4">
+                        <div className="bg-amber-100 p-3 rounded-full">
+                            <KeyRound className="w-6 h-6 text-amber-700" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-gray-900">測試 PIN 快速登入</h3>
+                            <p className="text-gray-500 text-sm mt-1">
+                                開發模式下可用 PIN <code className="bg-gray-100 px-1 rounded">{TEST_PIN}</code> 快速進入 Sandbox 流程。在此開關登入頁是否顯示 PIN 區塊；正式 build 不會出現此功能。
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 pl-0 sm:pl-[4.5rem]">
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                            <button
+                                type="button"
+                                role="switch"
+                                aria-checked={pinUiEnabled}
+                                onClick={() => togglePinUi(!pinUiEnabled)}
+                                className={`relative inline-flex h-7 w-12 flex-shrink-0 rounded-full border-2 border-transparent transition-colors ${pinUiEnabled ? 'bg-amber-500' : 'bg-gray-300'}`}
+                            >
+                                <span
+                                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition ${pinUiEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                                />
+                            </button>
+                            <span className="text-sm font-medium text-gray-800">
+                                登入頁顯示 PIN 快速登入
+                            </span>
+                        </label>
+                        <span className="text-sm text-gray-500">
+                            目前 PIN 測試模式：
+                            <strong className={pinBypassActive ? 'text-amber-700' : 'text-gray-600'}>
+                                {pinBypassActive ? '已開啟' : '未開啟'}
+                            </strong>
+                        </span>
+                    </div>
+                    {pinBypassActive && import.meta.env.VITE_SANDBOX !== 'true' && (
+                        <div className="mt-4 pl-0 sm:pl-[4.5rem]">
+                            <button
+                                type="button"
+                                onClick={exitPinBypass}
+                                className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                            >
+                                結束 PIN 測試並回到登入
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* 一鍵搬運：Google Sheet → Firebase */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">

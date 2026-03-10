@@ -445,6 +445,28 @@ export function mockGasPost(
 /** 測試階段 PIN：輸入後與 Sandbox 相同快速進入（僅 DEV 有效，勿用於正式站） */
 export const TEST_PIN = '5012';
 const PIN_BYPASS_STORAGE_KEY = 'edutrack_pin_bypass_ok';
+/** 登入頁是否顯示 PIN 區塊（存在 localStorage，系統設定可切換） */
+const PIN_UI_ENABLED_KEY = 'edutrack_pin_ui_enabled';
+
+/** 是否於登入頁顯示 PIN 快速登入（僅 DEV；預設 true，關閉後寫入 '0'） */
+export function isPinUiEnabled(): boolean {
+  if (!import.meta.env.DEV) return false;
+  try {
+    const v = localStorage.getItem(PIN_UI_ENABLED_KEY);
+    if (v === '0') return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+export function setPinUiEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(PIN_UI_ENABLED_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
 
 export function isPinBypassActive(): boolean {
   if (!import.meta.env.DEV) return false;
