@@ -161,6 +161,8 @@ export interface ExamPaper {
   schoolYear?: string; // 學年，如 114
   semester?: string; // 學期，如 上學期、下學期
   examType?: string; // 期中考、期末考、平時考 等
+  authorTeacherName?: string; // 出題教師姓名
+  authorTeacherNote?: string; // 出題教師備註
   uploadedBy: string; // 上傳者 email
   uploadedAt: string; // ISO 字串
 }

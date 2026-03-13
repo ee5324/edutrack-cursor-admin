@@ -623,6 +623,8 @@ export async function saveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: stri
     schoolYear: payload.schoolYear ?? null,
     semester: payload.semester ?? null,
     examType: payload.examType ?? null,
+    authorTeacherName: payload.authorTeacherName ?? null,
+    authorTeacherNote: payload.authorTeacherNote ?? null,
     uploadedBy: payload.uploadedBy,
     uploadedAt: payload.uploadedAt || new Date().toISOString(),
   };

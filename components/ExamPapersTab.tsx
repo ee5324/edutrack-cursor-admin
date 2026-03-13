@@ -57,7 +57,13 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   const [savingFolderName, setSavingFolderName] = useState(false);
   const [uploadGrade, setUploadGrade] = useState<string>('');
   const [uploadDomain, setUploadDomain] = useState<string>('');
+  const [uploadAuthorName, setUploadAuthorName] = useState('');
+  const [uploadAuthorNote, setUploadAuthorNote] = useState('');
   const [checks, setChecks] = useState<ExamPaperCheck[]>([]);
+  const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
+  const [editingAuthorName, setEditingAuthorName] = useState('');
+  const [editingAuthorNote, setEditingAuthorNote] = useState('');
+  const [savingAuthor, setSavingAuthor] = useState(false);
   const [updatingCheck, setUpdatingCheck] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -182,6 +188,8 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
         folderId: uploadFolderId ?? null,
         grade,
         domain,
+        authorTeacherName: uploadAuthorName.trim() || undefined,
+        authorTeacherNote: uploadAuthorNote.trim() || undefined,
         fileName: fileData.name || file.name,
         fileUrl: fileData.url,
         mimeType: fileData.mimeType || file.type || 'application/octet-stream',
@@ -214,6 +222,25 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       loadList();
     } catch (err: any) {
       setMessage({ type: 'error', text: err?.message || '刪除失敗' });
+    }
+  };
+
+  const handleSaveAuthorEdit = async (item: ExamPaper) => {
+    setSavingAuthor(true);
+    setMessage(null);
+    try {
+      await saveExamPaper({
+        ...item,
+        authorTeacherName: editingAuthorName.trim() || undefined,
+        authorTeacherNote: editingAuthorNote.trim() || undefined,
+      });
+      setMessage({ type: 'success', text: '已更新出題教師資訊' });
+      setEditingPaperId(null);
+      loadList();
+    } catch (e: any) {
+      setMessage({ type: 'error', text: e?.message || '儲存失敗' });
+    } finally {
+      setSavingAuthor(false);
     }
   };
 
@@ -382,6 +409,26 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">出題教師</label>
+              <input
+                type="text"
+                value={uploadAuthorName}
+                onChange={(e) => setUploadAuthorName(e.target.value)}
+                placeholder="姓名"
+                className="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">出題備註</label>
+              <input
+                type="text"
+                value={uploadAuthorNote}
+                onChange={(e) => setUploadAuthorNote(e.target.value)}
+                placeholder="選填"
+                className="min-w-[8rem] flex-1 max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
             </div>
             <input
               ref={fileInputRef}
@@ -682,6 +729,28 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                       {item.uploadedBy} · {item.uploadedAt ? new Date(item.uploadedAt).toLocaleString('zh-TW') : ''}
                       {item.examType && ` · ${item.examType}`}
                     </p>
+                    {(item.authorTeacherName || item.authorTeacherNote || editingPaperId === item.id) && (
+                      <div className="mt-1.5 text-xs text-slate-600">
+                        {editingPaperId === item.id ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input type="text" value={editingAuthorName} onChange={(e) => setEditingAuthorName(e.target.value)} placeholder="出題教師姓名" className="w-28 px-2 py-1 border border-slate-200 rounded text-sm" />
+                            <input type="text" value={editingAuthorNote} onChange={(e) => setEditingAuthorNote(e.target.value)} placeholder="出題備註" className="min-w-[10rem] flex-1 px-2 py-1 border border-slate-200 rounded text-sm" />
+                            <button type="button" onClick={() => handleSaveAuthorEdit(item)} disabled={savingAuthor} className="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs disabled:opacity-50">儲存</button>
+                            <button type="button" onClick={() => { setEditingPaperId(null); }} className="px-2 py-1 rounded text-slate-500 text-xs hover:bg-slate-100">取消</button>
+                          </div>
+                        ) : (
+                          <>
+                            {item.authorTeacherName && <span>出題教師：{item.authorTeacherName}</span>}
+                            {item.authorTeacherName && item.authorTeacherNote && ' · '}
+                            {item.authorTeacherNote && <span>備註：{item.authorTeacherNote}</span>}
+                            <button type="button" onClick={() => { setEditingPaperId(item.id); setEditingAuthorName(item.authorTeacherName ?? ''); setEditingAuthorNote(item.authorTeacherNote ?? ''); }} className="ml-2 text-blue-600 hover:underline">編輯</button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {!item.authorTeacherName && !item.authorTeacherNote && editingPaperId !== item.id && (
+                      <button type="button" onClick={() => { setEditingPaperId(item.id); setEditingAuthorName(''); setEditingAuthorNote(''); }} className="mt-1 text-xs text-slate-500 hover:text-slate-700">＋ 填寫出題教師／備註</button>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <a

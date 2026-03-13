@@ -296,6 +296,8 @@ export function sandboxSaveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: str
     schoolYear: payload.schoolYear,
     semester: payload.semester,
     examType: payload.examType,
+    authorTeacherName: payload.authorTeacherName,
+    authorTeacherNote: payload.authorTeacherNote,
     uploadedBy: payload.uploadedBy,
     uploadedAt: payload.uploadedAt ?? new Date().toISOString(),
   };
