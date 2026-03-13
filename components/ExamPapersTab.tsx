@@ -233,7 +233,7 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
