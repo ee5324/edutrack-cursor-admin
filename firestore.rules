@@ -63,12 +63,12 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
-    // 9. 代課人力庫 (Sub Pool) - 新增
+    // 9. 代課人力庫 (Sub Pool)
     match /subPool/{teacherId} {
       allow read, write: if isSignedIn();
     }
 
-    // 10. 語言教師薪資 (Language Payrolls) - 新增
+    // 10. 語言教師薪資 (Language Payrolls)
     match /languagePayrolls/{payrollId} {
       allow read, write: if isSignedIn();
     }
@@ -77,6 +77,23 @@ service cloud.firestore {
     // 包含 settings, holidays, metadata 等文件
     match /system/{docId} {
       allow read, write: if isSignedIn();
+    }
+
+    // 12. 代課教師報名（對外表單：未登入可建立，僅登入可讀/改/刪）
+    match /substituteApplications/{appId} {
+      allow create: if true;
+      allow read, update, delete: if isSignedIn();
+    }
+
+    // 13. 公開缺額看板（對外：任何人可讀；僅登入可寫。與 GS 脫鉤，改由 Firebase 提供）
+    match /publicBoard/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    // 14. 公開缺額報名紀錄（對外：未登入可建立；僅登入可讀）
+    match /publicBoardApplications/{appId} {
+      allow create: if true;
+      allow read, update, delete: if isSignedIn();
     }
 
     // =========================================================
