@@ -580,6 +580,8 @@ export async function saveExamPaperFolder(payload: Omit<ExamPaperFolder, 'id'> &
   const row: DocumentData = {
     name: payload.name,
     order: payload.order ?? 0,
+    parentId: payload.parentId ?? null,
+    driveFolderUrl: payload.driveFolderUrl ?? null,
   };
   await setDoc(doc(db, COLLECTIONS.EXAM_PAPER_FOLDERS, id), row, { merge: true });
   return { success: true, id };

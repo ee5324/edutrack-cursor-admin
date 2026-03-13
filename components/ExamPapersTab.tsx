@@ -3,7 +3,7 @@
  * 資料存 Firestore（edutrack_exam_papers / edutrack_exam_paper_folders），檔案經 GAS 上傳至 Google Drive
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus, Pencil, ClipboardCheck } from 'lucide-react';
+import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus, Pencil, ClipboardCheck, ExternalLink } from 'lucide-react';
 import type { ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
 import {
   getExamPapers,
@@ -20,7 +20,15 @@ import type { User } from 'firebase/auth';
 
 const EXAM_TYPE_OPTIONS = ['期中考', '期末考', '平時考', '複習考', '其他'];
 const GRADE_OPTIONS = ['1', '2', '3', '4', '5', '6'] as const;
-const DOMAIN_OPTIONS = ['國語', '數學', '英語', '自然', '社會', '生活', '藝術', '綜合', '健康', '其他'];
+/** 一、二年級考科 */
+const DOMAINS_GRADE_12 = ['國語', '數學'];
+/** 三～六年級考科 */
+const DOMAINS_GRADE_36 = ['國語', '數學', '自然', '社會'];
+/** 檢核表表頭（固定四欄，1-2 年級僅前兩欄有效） */
+const CHECKLIST_DOMAINS = ['國語', '數學', '自然', '社會'];
+
+const getDomainsForGrade = (grade: string): string[] =>
+  grade === '1' || grade === '2' ? DOMAINS_GRADE_12 : DOMAINS_GRADE_36;
 
 const FOLDER_ALL = 'all';
 const FOLDER_NONE = 'none';
@@ -38,6 +46,8 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderParentId, setNewFolderParentId] = useState('');
+  const [newFolderDriveUrl, setNewFolderDriveUrl] = useState('');
   const [addingFolder, setAddingFolder] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -88,11 +98,31 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     loadList();
   }, []);
 
+  useEffect(() => {
+    if (uploadGrade && uploadDomain && !getDomainsForGrade(uploadGrade).includes(uploadDomain)) {
+      setUploadDomain('');
+    }
+  }, [uploadGrade]);
+
   const gradeOrder = (g: string | undefined) => {
     if (!g) return 99;
     const n = parseInt(g, 10);
     return !Number.isNaN(n) && n >= 1 && n <= 6 ? n : 99;
   };
+
+  const rootFolders = folders
+    .filter((f) => !f.parentId || f.parentId === '')
+    .sort((a, b) => a.order - b.order);
+  const childrenByParent = folders.reduce<Record<string, ExamPaperFolder[]>>((acc, f) => {
+    const pid = f.parentId ?? '';
+    if (!pid) return acc;
+    if (!acc[pid]) acc[pid] = [];
+    acc[pid].push(f);
+    return acc;
+  }, {});
+  Object.keys(childrenByParent).forEach((pid) => {
+    childrenByParent[pid].sort((a, b) => a.order - b.order);
+  });
 
   const filteredList = (() => {
     let base =
@@ -203,9 +233,17 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     setAddingFolder(true);
     setMessage(null);
     try {
-      const maxOrder = folders.length ? Math.max(...folders.map((f) => f.order), 0) : 0;
-      await saveExamPaperFolder({ name, order: maxOrder + 1 });
+      const parentId = newFolderParentId || null;
+      const siblings = folders.filter((f) => (f.parentId ?? null) === parentId);
+      const maxOrder = siblings.length ? Math.max(...siblings.map((f) => f.order), 0) : 0;
+      await saveExamPaperFolder({
+        name,
+        order: maxOrder + 1,
+        parentId,
+        driveFolderUrl: newFolderDriveUrl.trim() || null,
+      });
       setNewFolderName('');
+      setNewFolderDriveUrl('');
       setMessage({ type: 'success', text: '已新增資料夾' });
       loadFolders();
     } catch (err: any) {
@@ -340,7 +378,7 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                 className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white min-w-[5rem]"
               >
                 <option value="">—</option>
-                {DOMAIN_OPTIONS.map((d) => (
+                {(uploadGrade ? getDomainsForGrade(uploadGrade) : CHECKLIST_DOMAINS).map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
@@ -387,7 +425,7 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
             <thead>
               <tr>
                 <th className="text-left p-2 border-b border-slate-200 text-slate-600 font-medium">年級</th>
-                {DOMAIN_OPTIONS.map((d) => (
+                {CHECKLIST_DOMAINS.map((d) => (
                   <th key={d} className="p-2 border-b border-slate-200 text-slate-600 font-medium text-center min-w-[2.5rem]">
                     {d}
                   </th>
@@ -395,35 +433,43 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
               </tr>
             </thead>
             <tbody>
-              {GRADE_OPTIONS.map((g) => (
-                <tr key={g}>
-                  <td className="p-2 border-b border-slate-100 text-slate-700">
-                    {['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級
-                  </td>
-                  {DOMAIN_OPTIONS.map((domain) => {
-                    const key = `${g}-${domain}`;
-                    const checked = isCheckChecked(g, domain);
-                    const busy = updatingCheck === key;
-                    return (
-                      <td key={domain} className="p-1 border-b border-slate-100 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleCheckToggle(g, domain)}
-                          disabled={busy}
-                          className={`inline-flex h-8 w-8 items-center justify-center rounded border-2 transition-colors ${
-                            checked
-                              ? 'border-green-500 bg-green-50 text-green-700'
-                              : 'border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300'
-                          } ${busy ? 'opacity-60' : ''}`}
-                          title={`${['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級 ${domain}`}
-                        >
-                          {busy ? <Loader2 size={14} className="animate-spin" /> : checked ? <Check size={16} /> : null}
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+              {GRADE_OPTIONS.map((g) => {
+                const domainsForGrade = getDomainsForGrade(g);
+                return (
+                  <tr key={g}>
+                    <td className="p-2 border-b border-slate-100 text-slate-700">
+                      {['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級
+                    </td>
+                    {CHECKLIST_DOMAINS.map((domain) => {
+                      const key = `${g}-${domain}`;
+                      const enabled = domainsForGrade.includes(domain);
+                      const checked = isCheckChecked(g, domain);
+                      const busy = updatingCheck === key;
+                      return (
+                        <td key={domain} className="p-1 border-b border-slate-100 text-center">
+                          {enabled ? (
+                            <button
+                              type="button"
+                              onClick={() => handleCheckToggle(g, domain)}
+                              disabled={busy}
+                              className={`inline-flex h-8 w-8 items-center justify-center rounded border-2 transition-colors ${
+                                checked
+                                  ? 'border-green-500 bg-green-50 text-green-700'
+                                  : 'border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300'
+                              } ${busy ? 'opacity-60' : ''}`}
+                              title={`${['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級 ${domain}`}
+                            >
+                              {busy ? <Loader2 size={14} className="animate-spin" /> : checked ? <Check size={16} /> : null}
+                            </button>
+                          ) : (
+                            <span className="inline-flex h-8 w-8 items-center justify-center text-slate-300">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -437,7 +483,7 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
               <Folder size={18} className="text-slate-600" />
               <span className="font-semibold text-slate-900">資料夾</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">拖曳考卷至此可變更所屬資料夾</p>
+            <p className="mt-1 text-xs text-slate-500">拖曳考卷至此可變更所屬資料夾；可設上層彙整、直連 Google Drive</p>
           </div>
           <nav className="p-2 space-y-0.5">
             <button
@@ -477,104 +523,118 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                 未分類
               </button>
             </div>
-            {folders.map((f) => (
-              <div
-                key={f.id}
-                className="group flex items-center gap-1"
-                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(f.id); }}
-                onDragLeave={() => setDropTargetId(null)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDropTargetId(null);
-                  setDraggingId(null);
-                  try {
-                    const raw = e.dataTransfer.getData('application/x-edutrack-exampaper');
-                    if (!raw) return;
-                    const item = JSON.parse(raw) as ExamPaper;
-                    handleMoveToFolder(item, f.id);
-                  } catch (_) {}
-                }}
-                className={dropTargetId === f.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
-              >
-                {editingFolderId === f.id ? (
-                  <div className="flex-1 flex items-center gap-2 px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={editingFolderName}
-                      onChange={(e) => setEditingFolderName(e.target.value)}
-                      onBlur={() => handleRenameFolder(f, editingFolderName)}
-                      className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded text-sm"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleRenameFolder(f, editingFolderName)}
-                      disabled={savingFolderName || !editingFolderName.trim()}
-                      className="shrink-0 px-2 py-1 text-xs rounded bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50"
-                    >
-                      {savingFolderName ? '…' : '確定'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setEditingFolderId(null); setEditingFolderName(''); }}
-                      className="shrink-0 px-2 py-1 text-xs rounded text-slate-500 hover:bg-slate-100"
-                    >
-                      取消
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFolderId(f.id)}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm ${
-                        selectedFolderId === f.id ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Folder size={16} />
-                      <span className="truncate">{f.name}</span>
-                      <span className="ml-auto text-slate-400 text-xs">
-                        {list.filter((p) => p.folderId === f.id).length}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setEditingFolderId(f.id); setEditingFolderName(f.name); }}
-                      className="p-1.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0"
-                      title="重新命名"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteFolder(f); }}
-                      className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 shrink-0"
-                      title="刪除資料夾"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-            <div className="pt-2 mt-1 border-t border-slate-100">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  placeholder="新資料夾名稱"
-                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddFolder}
-                  disabled={addingFolder || !newFolderName.trim()}
-                  className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
-                  title="新增資料夾"
+            {rootFolders.map((f) => (
+              <React.Fragment key={f.id}>
+                <div
+                  className="group flex items-center gap-1"
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(f.id); }}
+                  onDragLeave={() => setDropTargetId(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDropTargetId(null);
+                    setDraggingId(null);
+                    try {
+                      const raw = e.dataTransfer.getData('application/x-edutrack-exampaper');
+                      if (!raw) return;
+                      const item = JSON.parse(raw) as ExamPaper;
+                      handleMoveToFolder(item, f.id);
+                    } catch (_) {}
+                  }}
+                  className={dropTargetId === f.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
                 >
+                  {editingFolderId === f.id ? (
+                    <div className="flex-1 flex items-center gap-2 px-2 py-1.5">
+                      <input
+                        type="text"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        onBlur={() => handleRenameFolder(f, editingFolderName)}
+                        className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded text-sm"
+                        autoFocus
+                      />
+                      <button type="button" onClick={() => handleRenameFolder(f, editingFolderName)} disabled={savingFolderName || !editingFolderName.trim()} className="shrink-0 px-2 py-1 text-xs rounded bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50">{savingFolderName ? '…' : '確定'}</button>
+                      <button type="button" onClick={() => { setEditingFolderId(null); setEditingFolderName(''); }} className="shrink-0 px-2 py-1 text-xs rounded text-slate-500 hover:bg-slate-100">取消</button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFolderId(f.id)}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm min-w-0 ${
+                          selectedFolderId === f.id ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Folder size={16} className="shrink-0" />
+                        <span className="truncate">{f.name}</span>
+                        {f.driveFolderUrl && (
+                          <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="shrink-0 p-0.5 rounded text-blue-600 hover:bg-blue-50" title="開啟 Google Drive"> <ExternalLink size={12} /> </a>
+                        )}
+                        <span className="ml-auto text-slate-400 text-xs shrink-0">{list.filter((p) => p.folderId === f.id).length}</span>
+                      </button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingFolderId(f.id); setEditingFolderName(f.name); }} className="p-1.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0" title="重新命名"><Pencil size={14} /></button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteFolder(f); }} className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 shrink-0" title="刪除資料夾"><Trash2 size={14} /></button>
+                    </>
+                  )}
+                </div>
+                {(childrenByParent[f.id] ?? []).map((sub) => (
+                  <div key={sub.id} className="pl-4">
+                    <div
+                      className="group flex items-center gap-1"
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(sub.id); }}
+                      onDragLeave={() => setDropTargetId(null)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDropTargetId(null);
+                        setDraggingId(null);
+                        try {
+                          const raw = e.dataTransfer.getData('application/x-edutrack-exampaper');
+                          if (!raw) return;
+                          const item = JSON.parse(raw) as ExamPaper;
+                          handleMoveToFolder(item, sub.id);
+                        } catch (_) {}
+                      }}
+                      className={dropTargetId === sub.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
+                    >
+                      {editingFolderId === sub.id ? (
+                        <div className="flex-1 flex items-center gap-2 px-2 py-1.5">
+                          <input type="text" value={editingFolderName} onChange={(e) => setEditingFolderName(e.target.value)} onBlur={() => handleRenameFolder(sub, editingFolderName)} className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded text-sm" autoFocus />
+                          <button type="button" onClick={() => handleRenameFolder(sub, editingFolderName)} disabled={savingFolderName || !editingFolderName.trim()} className="shrink-0 px-2 py-1 text-xs rounded bg-slate-200 text-slate-700"> {savingFolderName ? '…' : '確定'} </button>
+                          <button type="button" onClick={() => { setEditingFolderId(null); setEditingFolderName(''); }} className="shrink-0 px-2 py-1 text-xs rounded text-slate-500 hover:bg-slate-100">取消</button>
+                        </div>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => setSelectedFolderId(sub.id)} className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm min-w-0 ${selectedFolderId === sub.id ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}>
+                            <Folder size={16} className="shrink-0" />
+                            <span className="truncate">{sub.name}</span>
+                            {sub.driveFolderUrl && <a href={sub.driveFolderUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="shrink-0 p-0.5 rounded text-blue-600 hover:bg-blue-50" title="開啟 Google Drive"><ExternalLink size={12} /></a>}
+                            <span className="ml-auto text-slate-400 text-xs shrink-0">{list.filter((p) => p.folderId === sub.id).length}</span>
+                          </button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setEditingFolderId(sub.id); setEditingFolderName(sub.name); }} className="p-1.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0" title="重新命名"><Pencil size={14} /></button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteFolder(sub); }} className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 shrink-0" title="刪除資料夾"><Trash2 size={14} /></button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </React.Fragment>
+            ))}
+            <div className="pt-2 mt-1 border-t border-slate-100 space-y-2">
+              <div className="flex gap-2">
+                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="新資料夾名稱" className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                <button type="button" onClick={handleAddFolder} disabled={addingFolder || !newFolderName.trim()} className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50" title="新增資料夾">
                   {addingFolder ? <Loader2 size={18} className="animate-spin" /> : <FolderPlus size={18} />}
                 </button>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center text-xs">
+                <span className="text-slate-500">所屬上層</span>
+                <select value={newFolderParentId} onChange={(e) => setNewFolderParentId(e.target.value)} className="px-2 py-1.5 border border-slate-200 rounded bg-white text-slate-700">
+                  <option value="">無（最上層）</option>
+                  {rootFolders.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+                <span className="text-slate-500">Drive 連結</span>
+                <input type="url" value={newFolderDriveUrl} onChange={(e) => setNewFolderDriveUrl(e.target.value)} placeholder="選填" className="flex-1 min-w-0 px-2 py-1.5 border border-slate-200 rounded text-slate-700" />
               </div>
             </div>
           </nav>

@@ -262,6 +262,8 @@ export function sandboxSaveExamPaperFolder(payload: Omit<ExamPaperFolder, 'id'> 
     id,
     name: payload.name,
     order: payload.order ?? 0,
+    parentId: payload.parentId ?? undefined,
+    driveFolderUrl: payload.driveFolderUrl ?? undefined,
   };
   const idx = store.examPaperFolders.findIndex((f) => f.id === id);
   if (idx >= 0) store.examPaperFolders[idx] = row;

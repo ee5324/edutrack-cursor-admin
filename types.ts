@@ -132,11 +132,13 @@ export interface ArchiveTask {
 }
 
 /** 考卷存檔（僅白名單用戶可存取） */
-/** 考卷資料夾（用於分類） */
+/** 考卷資料夾（用於分類；可設上層彙整、直連 Google Drive） */
 export interface ExamPaperFolder {
   id: string;
   name: string;
   order: number; // 顯示順序，數字越小越前面
+  parentId?: string | null; // 上層資料夾 id，空為最上層（利於學期/階段彙整）
+  driveFolderUrl?: string | null; // 對應之 Google Drive 資料夾連結，直連開啟
 }
 
 /** 考卷檢核項目（年級 × 領域，可手動打勾） */
