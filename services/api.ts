@@ -18,7 +18,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -41,6 +41,9 @@ import {
   sandboxDeleteTodo,
   sandboxCancelSeries,
   sandboxToggleTodoStatus,
+  sandboxGetExamPapers,
+  sandboxSaveExamPaper,
+  sandboxDeleteExamPaper,
 } from './sandboxStore';
 
 const GAS_API_URL = import.meta.env.VITE_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbzWyYHtUbAMIFGBtMtXGvdXuAIiml1pAdf0qKykQ3vzCY5QFdAsMjCoyZ_Znam7oxRC/exec';
@@ -551,6 +554,46 @@ export async function uploadAttachment(payload: { base64Data: string; name: stri
   const res = await gasPost('UPLOAD_ATTACHMENT', payload);
   if (!res.success) throw new Error(res.message);
   return res.data ?? res;
+}
+
+// --- Exam Papers（考卷存檔，僅白名單用戶可存取）---
+export async function getExamPapers(): Promise<ExamPaper[]> {
+  if (isSandbox()) return sandboxGetExamPapers();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(
+    query(collection(db, COLLECTIONS.EXAM_PAPERS), orderBy('uploadedAt', 'desc'))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ExamPaper));
+}
+
+export async function saveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: string }) {
+  if (isSandbox()) return sandboxSaveExamPaper(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = payload.id ?? doc(collection(db, COLLECTIONS.EXAM_PAPERS)).id;
+  const row: DocumentData = {
+    title: payload.title ?? '',
+    fileName: payload.fileName,
+    fileUrl: payload.fileUrl,
+    mimeType: payload.mimeType ?? 'application/octet-stream',
+    fileId: payload.fileId ?? null,
+    schoolYear: payload.schoolYear ?? null,
+    semester: payload.semester ?? null,
+    examType: payload.examType ?? null,
+    uploadedBy: payload.uploadedBy,
+    uploadedAt: payload.uploadedAt || new Date().toISOString(),
+  };
+  await setDoc(doc(db, COLLECTIONS.EXAM_PAPERS, id), row, { merge: true });
+  return { success: true, id };
+}
+
+export async function deleteExamPaper(payload: { id: string }) {
+  if (isSandbox()) return sandboxDeleteExamPaper(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  await deleteDoc(doc(db, COLLECTIONS.EXAM_PAPERS, payload.id));
+  return { success: true };
 }
 
 // --- Setup (GAS：檢查 Drive 等；Sandbox 時回傳說明) ---

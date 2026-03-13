@@ -6,7 +6,8 @@ import AttendanceGenerator from './AttendanceGenerator';
 import TodoCalendar from './components/TodoCalendar';
 import CampusMap from './components/CampusMap';
 import AwardGenerator from './AwardGenerator'; 
-import VendorManager from './VendorManager'; 
+import VendorManager from './VendorManager';
+import ExamPapersTab from './components/ExamPapersTab';
 import ArchiveManager from './ArchiveManager';
 import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound } from 'lucide-react';
 import { setupSystem, getArchiveTasks } from './services/api';
@@ -327,6 +328,8 @@ const App: React.FC = () => {
         return <AwardGenerator />;
       case 'vendors':
         return <VendorManager />;
+      case 'exam-papers':
+        return <ExamPapersTab user={user} />;
       case 'archive':
         return <ArchiveManager onTasksChange={setArchiveCount} />;
       case 'settings':

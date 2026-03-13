@@ -131,6 +131,21 @@ export interface ArchiveTask {
   updatedAt: string; // 最後更新時間
 }
 
+/** 考卷存檔（僅白名單用戶可存取） */
+export interface ExamPaper {
+  id: string;
+  title?: string; // 選填標題，例如「114-1 三年級國語期中考」
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  fileId?: string; // Drive file id，方便日後刪除
+  schoolYear?: string; // 學年，如 114
+  semester?: string; // 學期，如 上學期、下學期
+  examType?: string; // 期中考、期末考、平時考 等
+  uploadedBy: string; // 上傳者 email
+  uploadedAt: string; // ISO 字串
+}
+
 export interface AllowedUser {
   email: string;
   enabled: boolean;

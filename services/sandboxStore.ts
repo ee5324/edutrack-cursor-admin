@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper } from '../types';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -99,6 +99,7 @@ const store = {
       period: 'full',
     },
   ] as TodoItem[],
+  examPapers: [] as ExamPaper[],
 };
 
 // --- Courses & Students ---
@@ -245,6 +246,37 @@ export function sandboxSaveVendor(payload: Partial<Vendor> & { name: string }) {
 
 export function sandboxDeleteVendor(payload: { id: string }) {
   store.vendors = store.vendors.filter((v) => v.id !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
+// --- Exam Papers ---
+export function sandboxGetExamPapers(): Promise<ExamPaper[]> {
+  return Promise.resolve([...store.examPapers].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)));
+}
+
+export function sandboxSaveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: string }) {
+  const id = payload.id ?? uid();
+  const row: ExamPaper = {
+    id,
+    title: payload.title ?? '',
+    fileName: payload.fileName,
+    fileUrl: payload.fileUrl,
+    mimeType: payload.mimeType ?? 'application/octet-stream',
+    fileId: payload.fileId,
+    schoolYear: payload.schoolYear,
+    semester: payload.semester,
+    examType: payload.examType,
+    uploadedBy: payload.uploadedBy,
+    uploadedAt: payload.uploadedAt ?? new Date().toISOString(),
+  };
+  const idx = store.examPapers.findIndex((e) => e.id === id);
+  if (idx >= 0) store.examPapers[idx] = row;
+  else store.examPapers.push(row);
+  return Promise.resolve({ success: true, id });
+}
+
+export function sandboxDeleteExamPaper(payload: { id: string }) {
+  store.examPapers = store.examPapers.filter((e) => e.id !== payload.id);
   return Promise.resolve({ success: true });
 }
 
