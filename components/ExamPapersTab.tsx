@@ -3,7 +3,7 @@
  * 資料存 Firestore（edutrack_exam_papers / edutrack_exam_paper_folders），檔案經 GAS 上傳至 Google Drive
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus } from 'lucide-react';
+import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus, Pencil } from 'lucide-react';
 import type { ExamPaper, ExamPaperFolder } from '../types';
 import {
   getExamPapers,
@@ -38,6 +38,9 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [savingFolderName, setSavingFolderName] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadFolders = async () => {
@@ -170,6 +173,26 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       setMessage({ type: 'error', text: err?.message || '新增資料夾失敗' });
     } finally {
       setAddingFolder(false);
+    }
+  };
+
+  const handleRenameFolder = async (folder: ExamPaperFolder, newName: string) => {
+    const name = newName.trim();
+    if (!name || name === folder.name) {
+      setEditingFolderId(null);
+      return;
+    }
+    setSavingFolderName(true);
+    setMessage(null);
+    try {
+      await saveExamPaperFolder({ id: folder.id, name, order: folder.order });
+      setMessage({ type: 'success', text: '已重新命名' });
+      setEditingFolderId(null);
+      loadFolders();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.message || '重新命名失敗' });
+    } finally {
+      setSavingFolderName(false);
     }
   };
 
@@ -321,27 +344,65 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                 }}
                 className={dropTargetId === f.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
               >
-                <button
-                  type="button"
-                  onClick={() => setSelectedFolderId(f.id)}
-                  className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm ${
-                    selectedFolderId === f.id ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <Folder size={16} />
-                  <span className="truncate">{f.name}</span>
-                  <span className="ml-auto text-slate-400 text-xs">
-                    {list.filter((p) => p.folderId === f.id).length}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFolder(f)}
-                  className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100"
-                  title="刪除資料夾"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {editingFolderId === f.id ? (
+                  <div className="flex-1 flex items-center gap-2 px-2 py-1.5">
+                    <input
+                      type="text"
+                      value={editingFolderName}
+                      onChange={(e) => setEditingFolderName(e.target.value)}
+                      onBlur={() => handleRenameFolder(f, editingFolderName)}
+                      className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded text-sm"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRenameFolder(f, editingFolderName)}
+                      disabled={savingFolderName || !editingFolderName.trim()}
+                      className="shrink-0 px-2 py-1 text-xs rounded bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+                    >
+                      {savingFolderName ? '…' : '確定'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingFolderId(null); setEditingFolderName(''); }}
+                      className="shrink-0 px-2 py-1 text-xs rounded text-slate-500 hover:bg-slate-100"
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFolderId(f.id)}
+                      className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm ${
+                        selectedFolderId === f.id ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Folder size={16} />
+                      <span className="truncate">{f.name}</span>
+                      <span className="ml-auto text-slate-400 text-xs">
+                        {list.filter((p) => p.folderId === f.id).length}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingFolderId(f.id); setEditingFolderName(f.name); }}
+                      className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 opacity-0 group-hover:opacity-100"
+                      title="重新命名"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFolder(f)}
+                      className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100"
+                      title="刪除資料夾"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
             <div className="pt-2 mt-1 border-t border-slate-100">
@@ -350,7 +411,6 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                   type="text"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddFolder()}
                   placeholder="新資料夾名稱"
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
                 />
