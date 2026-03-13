@@ -132,8 +132,16 @@ export interface ArchiveTask {
 }
 
 /** 考卷存檔（僅白名單用戶可存取） */
+/** 考卷資料夾（用於分類） */
+export interface ExamPaperFolder {
+  id: string;
+  name: string;
+  order: number; // 顯示順序，數字越小越前面
+}
+
 export interface ExamPaper {
   id: string;
+  folderId?: string | null; // 所屬資料夾 id，空為未分類
   title?: string; // 選填標題，例如「114-1 三年級國語期中考」
   fileName: string;
   fileUrl: string;

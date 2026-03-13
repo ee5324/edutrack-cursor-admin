@@ -18,7 +18,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -41,6 +41,9 @@ import {
   sandboxDeleteTodo,
   sandboxCancelSeries,
   sandboxToggleTodoStatus,
+  sandboxGetExamPaperFolders,
+  sandboxSaveExamPaperFolder,
+  sandboxDeleteExamPaperFolder,
   sandboxGetExamPapers,
   sandboxSaveExamPaper,
   sandboxDeleteExamPaper,
@@ -556,6 +559,38 @@ export async function uploadAttachment(payload: { base64Data: string; name: stri
   return res.data ?? res;
 }
 
+// --- Exam Paper Folders（考卷資料夾）---
+export async function getExamPaperFolders(): Promise<ExamPaperFolder[]> {
+  if (isSandbox()) return sandboxGetExamPaperFolders();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(
+    query(collection(db, COLLECTIONS.EXAM_PAPER_FOLDERS), orderBy('order', 'asc'))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ExamPaperFolder));
+}
+
+export async function saveExamPaperFolder(payload: Omit<ExamPaperFolder, 'id'> & { id?: string }) {
+  if (isSandbox()) return sandboxSaveExamPaperFolder(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = payload.id ?? doc(collection(db, COLLECTIONS.EXAM_PAPER_FOLDERS)).id;
+  const row: DocumentData = {
+    name: payload.name,
+    order: payload.order ?? 0,
+  };
+  await setDoc(doc(db, COLLECTIONS.EXAM_PAPER_FOLDERS, id), row, { merge: true });
+  return { success: true, id };
+}
+
+export async function deleteExamPaperFolder(payload: { id: string }) {
+  if (isSandbox()) return sandboxDeleteExamPaperFolder(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  await deleteDoc(doc(db, COLLECTIONS.EXAM_PAPER_FOLDERS, payload.id));
+  return { success: true };
+}
+
 // --- Exam Papers（考卷存檔，僅白名單用戶可存取）---
 export async function getExamPapers(): Promise<ExamPaper[]> {
   if (isSandbox()) return sandboxGetExamPapers();
@@ -573,6 +608,7 @@ export async function saveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: stri
   if (!db) throw new Error('Firebase 未初始化');
   const id = payload.id ?? doc(collection(db, COLLECTIONS.EXAM_PAPERS)).id;
   const row: DocumentData = {
+    folderId: payload.folderId ?? null,
     title: payload.title ?? '',
     fileName: payload.fileName,
     fileUrl: payload.fileUrl,

@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder } from '../types';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -100,6 +100,7 @@ const store = {
     },
   ] as TodoItem[],
   examPapers: [] as ExamPaper[],
+  examPaperFolders: [] as ExamPaperFolder[],
 };
 
 // --- Courses & Students ---
@@ -249,6 +250,29 @@ export function sandboxDeleteVendor(payload: { id: string }) {
   return Promise.resolve({ success: true });
 }
 
+// --- Exam Paper Folders ---
+export function sandboxGetExamPaperFolders(): Promise<ExamPaperFolder[]> {
+  return Promise.resolve([...store.examPaperFolders].sort((a, b) => a.order - b.order));
+}
+
+export function sandboxSaveExamPaperFolder(payload: Omit<ExamPaperFolder, 'id'> & { id?: string }) {
+  const id = payload.id ?? uid();
+  const row: ExamPaperFolder = {
+    id,
+    name: payload.name,
+    order: payload.order ?? 0,
+  };
+  const idx = store.examPaperFolders.findIndex((f) => f.id === id);
+  if (idx >= 0) store.examPaperFolders[idx] = row;
+  else store.examPaperFolders.push(row);
+  return Promise.resolve({ success: true, id });
+}
+
+export function sandboxDeleteExamPaperFolder(payload: { id: string }) {
+  store.examPaperFolders = store.examPaperFolders.filter((f) => f.id !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
 // --- Exam Papers ---
 export function sandboxGetExamPapers(): Promise<ExamPaper[]> {
   return Promise.resolve([...store.examPapers].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)));
@@ -258,6 +282,7 @@ export function sandboxSaveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: str
   const id = payload.id ?? uid();
   const row: ExamPaper = {
     id,
+    folderId: payload.folderId ?? undefined,
     title: payload.title ?? '',
     fileName: payload.fileName,
     fileUrl: payload.fileUrl,
