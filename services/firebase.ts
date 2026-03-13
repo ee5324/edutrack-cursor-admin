@@ -81,6 +81,7 @@ export const COLLECTIONS = {
   ALLOWED_USERS: `${COLLECTION_PREFIX}allowed_users`,
   EXAM_PAPERS: `${COLLECTION_PREFIX}exam_papers`,
   EXAM_PAPER_FOLDERS: `${COLLECTION_PREFIX}exam_paper_folders`,
+  EXAM_PAPER_CHECKS: `${COLLECTION_PREFIX}exam_paper_checks`,
 } as const;
 
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */

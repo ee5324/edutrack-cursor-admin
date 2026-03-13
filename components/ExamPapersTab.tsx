@@ -3,8 +3,8 @@
  * 資料存 Firestore（edutrack_exam_papers / edutrack_exam_paper_folders），檔案經 GAS 上傳至 Google Drive
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus, Pencil } from 'lucide-react';
-import type { ExamPaper, ExamPaperFolder } from '../types';
+import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus, Pencil, ClipboardCheck } from 'lucide-react';
+import type { ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
 import {
   getExamPapers,
   getExamPaperFolders,
@@ -13,10 +13,14 @@ import {
   deleteExamPaper,
   deleteExamPaperFolder,
   uploadAttachment,
+  getExamPaperChecks,
+  setExamPaperCheck,
 } from '../services/api';
 import type { User } from 'firebase/auth';
 
 const EXAM_TYPE_OPTIONS = ['期中考', '期末考', '平時考', '複習考', '其他'];
+const GRADE_OPTIONS = ['1', '2', '3', '4', '5', '6'] as const;
+const DOMAIN_OPTIONS = ['國語', '數學', '英語', '自然', '社會', '生活', '藝術', '綜合', '健康', '其他'];
 
 const FOLDER_ALL = 'all';
 const FOLDER_NONE = 'none';
@@ -41,6 +45,10 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingFolderName, setEditingFolderName] = useState('');
   const [savingFolderName, setSavingFolderName] = useState(false);
+  const [uploadGrade, setUploadGrade] = useState<string>('');
+  const [uploadDomain, setUploadDomain] = useState<string>('');
+  const [checks, setChecks] = useState<ExamPaperCheck[]>([]);
+  const [updatingCheck, setUpdatingCheck] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadFolders = async () => {
@@ -56,9 +64,14 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     setLoading(true);
     setMessage(null);
     try {
-      const [papers, folderList] = await Promise.all([getExamPapers(), getExamPaperFolders()]);
+      const [papers, folderList, checkList] = await Promise.all([
+        getExamPapers(),
+        getExamPaperFolders(),
+        getExamPaperChecks(),
+      ]);
       setList(papers);
       setFolders(folderList);
+      setChecks(checkList);
     } catch (e: any) {
       const msg = e?.message || '';
       const isPermissionError = /permission|Permission/i.test(msg);
@@ -75,10 +88,25 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     loadList();
   }, []);
 
+  const gradeOrder = (g: string | undefined) => {
+    if (!g) return 99;
+    const n = parseInt(g, 10);
+    return !Number.isNaN(n) && n >= 1 && n <= 6 ? n : 99;
+  };
+
   const filteredList = (() => {
-    if (selectedFolderId === FOLDER_ALL) return list;
-    if (selectedFolderId === FOLDER_NONE) return list.filter((p) => !p.folderId || p.folderId === '');
-    return list.filter((p) => p.folderId === selectedFolderId);
+    let base =
+      selectedFolderId === FOLDER_ALL
+        ? [...list]
+        : selectedFolderId === FOLDER_NONE
+          ? list.filter((p) => !p.folderId || p.folderId === '')
+          : list.filter((p) => p.folderId === selectedFolderId);
+    return base.sort((a, b) => {
+      const ga = gradeOrder(a.grade);
+      const gb = gradeOrder(b.grade);
+      if (ga !== gb) return ga - gb;
+      return (b.uploadedAt || '').localeCompare(a.uploadedAt || '');
+    });
   })();
 
   const handleUploadClick = () => {
@@ -118,8 +146,12 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       const fileData = (uploadResult as any)?.file ?? uploadResult;
       if (!fileData?.url) throw new Error('上傳後未取得連結');
 
+      const grade = uploadGrade || undefined;
+      const domain = uploadDomain || undefined;
       await saveExamPaper({
         folderId: uploadFolderId ?? null,
+        grade,
+        domain,
         fileName: fileData.name || file.name,
         fileUrl: fileData.url,
         mimeType: fileData.mimeType || file.type || 'application/octet-stream',
@@ -128,6 +160,13 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
         uploadedAt: new Date().toISOString(),
         examType: '期中考',
       });
+      if (grade && domain) {
+        await setExamPaperCheck({ grade, domain, checked: true });
+        setChecks((prev) => {
+          const rest = prev.filter((c) => !(c.grade === grade && c.domain === domain));
+          return [...rest, { grade, domain, checked: true }];
+        });
+      }
       setMessage({ type: 'success', text: '已存檔，考卷列表已更新' });
       loadList();
     } catch (err: any) {
@@ -212,6 +251,26 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     }
   };
 
+  const isCheckChecked = (grade: string, domain: string) =>
+    checks.some((c) => c.grade === grade && c.domain === domain && c.checked);
+
+  const handleCheckToggle = async (grade: string, domain: string) => {
+    const key = `${grade}-${domain}`;
+    setUpdatingCheck(key);
+    const next = !isCheckChecked(grade, domain);
+    try {
+      await setExamPaperCheck({ grade, domain, checked: next });
+      setChecks((prev) => {
+        const rest = prev.filter((c) => !(c.grade === grade && c.domain === domain));
+        return [...rest, { grade, domain, checked: next }];
+      });
+    } catch (e: any) {
+      setMessage({ type: 'error', text: e?.message || '更新檢核失敗' });
+    } finally {
+      setUpdatingCheck(null);
+    }
+  };
+
   const handleDeleteFolder = async (folder: ExamPaperFolder) => {
     const inFolder = list.filter((p) => p.folderId === folder.id);
     const msg =
@@ -237,16 +296,55 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-100 text-violet-700 text-sm font-medium">
-              <ShieldCheck size={16} />
-              僅白名單帳號可存取
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-100 text-violet-700 text-sm font-medium">
+                <ShieldCheck size={16} />
+                僅白名單帳號可存取
+              </span>
+              <a
+                href="#exam-papers-folders"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById('exam-papers-folders')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200"
+              >
+                <Folder size={14} />
+                資料夾
+              </a>
             </div>
             <h2 className="mt-3 text-2xl font-bold text-slate-900">考卷存檔</h2>
             <p className="mt-1 text-slate-600 text-sm">
               上傳、刪除與分享皆需通過 Google 登入且在白名單內；檔案存於 Google Drive，可依資料夾分類。
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">年級</label>
+              <select
+                value={uploadGrade}
+                onChange={(e) => setUploadGrade(e.target.value)}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+              >
+                <option value="">—</option>
+                {GRADE_OPTIONS.map((g) => (
+                  <option key={g} value={g}>{['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">領域</label>
+              <select
+                value={uploadDomain}
+                onChange={(e) => setUploadDomain(e.target.value)}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white min-w-[5rem]"
+              >
+                <option value="">—</option>
+                {DOMAIN_OPTIONS.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -277,9 +375,63 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
         )}
       </section>
 
+      {/* 檢核區塊：年級 × 領域，上傳後自動打勾、可手動編輯 */}
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+          <ClipboardCheck size={18} className="text-slate-600" />
+          <span className="font-semibold text-slate-900">檢核區塊</span>
+          <span className="text-xs text-slate-500">上傳時選年級與領域即會打勾，也可直接點選格子在這裡勾選／取消</span>
+        </div>
+        <div className="p-4 overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="text-left p-2 border-b border-slate-200 text-slate-600 font-medium">年級</th>
+                {DOMAIN_OPTIONS.map((d) => (
+                  <th key={d} className="p-2 border-b border-slate-200 text-slate-600 font-medium text-center min-w-[2.5rem]">
+                    {d}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {GRADE_OPTIONS.map((g) => (
+                <tr key={g}>
+                  <td className="p-2 border-b border-slate-100 text-slate-700">
+                    {['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級
+                  </td>
+                  {DOMAIN_OPTIONS.map((domain) => {
+                    const key = `${g}-${domain}`;
+                    const checked = isCheckChecked(g, domain);
+                    const busy = updatingCheck === key;
+                    return (
+                      <td key={domain} className="p-1 border-b border-slate-100 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleCheckToggle(g, domain)}
+                          disabled={busy}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded border-2 transition-colors ${
+                            checked
+                              ? 'border-green-500 bg-green-50 text-green-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-400 hover:border-slate-300'
+                          } ${busy ? 'opacity-60' : ''}`}
+                          title={`${['一','二','三','四','五','六'][parseInt(g, 10) - 1]}年級 ${domain}`}
+                        >
+                          {busy ? <Loader2 size={14} className="animate-spin" /> : checked ? <Check size={16} /> : null}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <div className="flex flex-col md:flex-row gap-6">
         {/* 資料夾列 */}
-        <aside className="w-full md:w-56 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <aside id="exam-papers-folders" className="w-full md:w-56 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-4">
           <div className="px-4 py-3 border-b border-slate-200">
             <div className="flex items-center gap-2">
               <Folder size={18} className="text-slate-600" />
@@ -387,16 +539,16 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setEditingFolderId(f.id); setEditingFolderName(f.name); }}
-                      className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); setEditingFolderId(f.id); setEditingFolderName(f.name); }}
+                      className="p-1.5 rounded text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0"
                       title="重新命名"
                     >
                       <Pencil size={14} />
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDeleteFolder(f)}
-                      className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteFolder(f); }}
+                      className="p-1.5 rounded text-slate-500 hover:text-red-600 hover:bg-red-50 shrink-0"
                       title="刪除資料夾"
                     >
                       <Trash2 size={14} />
@@ -461,6 +613,12 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 truncate">{item.fileName}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
+                      {item.grade && (
+                        <span className="text-slate-600">{['一','二','三','四','五','六'][parseInt(item.grade, 10) - 1] || item.grade}年級</span>
+                      )}
+                      {item.grade && item.domain && ' · '}
+                      {item.domain && <span className="text-slate-600">{item.domain}</span>}
+                      {(item.grade || item.domain) && ' · '}
                       {item.uploadedBy} · {item.uploadedAt ? new Date(item.uploadedAt).toLocaleString('zh-TW') : ''}
                       {item.examType && ` · ${item.examType}`}
                     </p>

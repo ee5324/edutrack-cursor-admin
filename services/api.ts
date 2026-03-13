@@ -18,7 +18,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -47,6 +47,8 @@ import {
   sandboxGetExamPapers,
   sandboxSaveExamPaper,
   sandboxDeleteExamPaper,
+  sandboxGetExamPaperChecks,
+  sandboxSetExamPaperCheck,
 } from './sandboxStore';
 
 const GAS_API_URL = import.meta.env.VITE_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbzWyYHtUbAMIFGBtMtXGvdXuAIiml1pAdf0qKykQ3vzCY5QFdAsMjCoyZ_Znam7oxRC/exec';
@@ -610,6 +612,8 @@ export async function saveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: stri
   const row: DocumentData = {
     folderId: payload.folderId ?? null,
     title: payload.title ?? '',
+    grade: payload.grade ?? null,
+    domain: payload.domain ?? null,
     fileName: payload.fileName,
     fileUrl: payload.fileUrl,
     mimeType: payload.mimeType ?? 'application/octet-stream',
@@ -629,6 +633,32 @@ export async function deleteExamPaper(payload: { id: string }) {
   const db = getDb();
   if (!db) throw new Error('Firebase 未初始化');
   await deleteDoc(doc(db, COLLECTIONS.EXAM_PAPERS, payload.id));
+  return { success: true };
+}
+
+// --- Exam Paper Checks（年級 × 領域檢核，可編輯）---
+function examPaperCheckId(grade: string, domain: string) {
+  return `${grade}-${domain}`;
+}
+
+export async function getExamPaperChecks(): Promise<ExamPaperCheck[]> {
+  if (isSandbox()) return sandboxGetExamPaperChecks();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(collection(db, COLLECTIONS.EXAM_PAPER_CHECKS));
+  return snap.docs.map((d) => d.data() as ExamPaperCheck);
+}
+
+export async function setExamPaperCheck(payload: { grade: string; domain: string; checked: boolean }) {
+  if (isSandbox()) return sandboxSetExamPaperCheck(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = examPaperCheckId(payload.grade, payload.domain);
+  await setDoc(
+    doc(db, COLLECTIONS.EXAM_PAPER_CHECKS, id),
+    { grade: payload.grade, domain: payload.domain, checked: payload.checked },
+    { merge: true }
+  );
   return { success: true };
 }
 

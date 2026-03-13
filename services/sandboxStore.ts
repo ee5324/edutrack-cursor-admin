@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -101,6 +101,7 @@ const store = {
   ] as TodoItem[],
   examPapers: [] as ExamPaper[],
   examPaperFolders: [] as ExamPaperFolder[],
+  examPaperChecks: [] as ExamPaperCheck[],
 };
 
 // --- Courses & Students ---
@@ -284,6 +285,8 @@ export function sandboxSaveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: str
     id,
     folderId: payload.folderId ?? undefined,
     title: payload.title ?? '',
+    grade: payload.grade,
+    domain: payload.domain,
     fileName: payload.fileName,
     fileUrl: payload.fileUrl,
     mimeType: payload.mimeType ?? 'application/octet-stream',
@@ -302,6 +305,25 @@ export function sandboxSaveExamPaper(payload: Omit<ExamPaper, 'id'> & { id?: str
 
 export function sandboxDeleteExamPaper(payload: { id: string }) {
   store.examPapers = store.examPapers.filter((e) => e.id !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
+// --- Exam Paper Checks ---
+export function sandboxGetExamPaperChecks(): Promise<ExamPaperCheck[]> {
+  return Promise.resolve([...store.examPaperChecks]);
+}
+
+export function sandboxSetExamPaperCheck(payload: { grade: string; domain: string; checked: boolean }) {
+  const idx = store.examPaperChecks.findIndex(
+    (c) => c.grade === payload.grade && c.domain === payload.domain
+  );
+  const row: ExamPaperCheck = {
+    grade: payload.grade,
+    domain: payload.domain,
+    checked: payload.checked,
+  };
+  if (idx >= 0) store.examPaperChecks[idx] = row;
+  else store.examPaperChecks.push(row);
   return Promise.resolve({ success: true });
 }
 

@@ -139,10 +139,19 @@ export interface ExamPaperFolder {
   order: number; // 顯示順序，數字越小越前面
 }
 
+/** 考卷檢核項目（年級 × 領域，可手動打勾） */
+export interface ExamPaperCheck {
+  grade: string; // 1～6
+  domain: string; // 領域，如 國語、數學
+  checked: boolean;
+}
+
 export interface ExamPaper {
   id: string;
   folderId?: string | null; // 所屬資料夾 id，空為未分類
   title?: string; // 選填標題，例如「114-1 三年級國語期中考」
+  grade?: string; // 年級，如 1～6（用於排序與顯示一年級～六年級）
+  domain?: string; // 領域，如 國語、數學（用於檢核區塊）
   fileName: string;
   fileUrl: string;
   mimeType: string;
