@@ -35,6 +35,9 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [addingFolder, setAddingFolder] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [movingId, setMovingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadFolders = async () => {
@@ -170,6 +173,22 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     }
   };
 
+  const handleMoveToFolder = async (item: ExamPaper, targetFolderId: string) => {
+    const newFolderId = targetFolderId === FOLDER_NONE ? null : targetFolderId;
+    if (item.folderId === newFolderId || (item.folderId == null && newFolderId == null)) return;
+    setMovingId(item.id);
+    setMessage(null);
+    try {
+      await saveExamPaper({ ...item, folderId: newFolderId });
+      setMessage({ type: 'success', text: '已移動至資料夾' });
+      loadList();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.message || '移動失敗' });
+    } finally {
+      setMovingId(null);
+    }
+  };
+
   const handleDeleteFolder = async (folder: ExamPaperFolder) => {
     const inFolder = list.filter((p) => p.folderId === folder.id);
     const msg =
@@ -238,9 +257,12 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       <div className="flex flex-col md:flex-row gap-6">
         {/* 資料夾列 */}
         <aside className="w-full md:w-56 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
-            <Folder size={18} className="text-slate-600" />
-            <span className="font-semibold text-slate-900">資料夾</span>
+          <div className="px-4 py-3 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <Folder size={18} className="text-slate-600" />
+              <span className="font-semibold text-slate-900">資料夾</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">拖曳考卷至此可變更所屬資料夾</p>
           </div>
           <nav className="p-2 space-y-0.5">
             <button
@@ -253,18 +275,52 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
               <FileText size={16} />
               全部
             </button>
-            <button
-              type="button"
-              onClick={() => setSelectedFolderId(FOLDER_NONE)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm ${
-                selectedFolderId === FOLDER_NONE ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'
-              }`}
+            <div
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(FOLDER_NONE); }}
+              onDragLeave={() => setDropTargetId(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDropTargetId(null);
+                setDraggingId(null);
+                try {
+                  const raw = e.dataTransfer.getData('application/x-edutrack-exampaper');
+                  if (!raw) return;
+                  const item = JSON.parse(raw) as ExamPaper;
+                  handleMoveToFolder(item, FOLDER_NONE);
+                } catch (_) {}
+              }}
+              className={dropTargetId === FOLDER_NONE ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
             >
-              <Folder size={16} />
-              未分類
-            </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFolderId(FOLDER_NONE)}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm ${
+                  selectedFolderId === FOLDER_NONE ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Folder size={16} />
+                未分類
+              </button>
+            </div>
             {folders.map((f) => (
-              <div key={f.id} className="group flex items-center gap-1">
+              <div
+                key={f.id}
+                className="group flex items-center gap-1"
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(f.id); }}
+                onDragLeave={() => setDropTargetId(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDropTargetId(null);
+                  setDraggingId(null);
+                  try {
+                    const raw = e.dataTransfer.getData('application/x-edutrack-exampaper');
+                    if (!raw) return;
+                    const item = JSON.parse(raw) as ExamPaper;
+                    handleMoveToFolder(item, f.id);
+                  } catch (_) {}
+                }}
+                className={dropTargetId === f.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
+              >
                 <button
                   type="button"
                   onClick={() => setSelectedFolderId(f.id)}
@@ -331,7 +387,17 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
           ) : (
             <ul className="divide-y divide-slate-200">
               {filteredList.map((item) => (
-                <li key={item.id} className="px-4 py-4 flex flex-wrap items-center gap-3">
+                <li
+                  key={item.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggingId(item.id);
+                    e.dataTransfer.setData('application/x-edutrack-exampaper', JSON.stringify(item));
+                    e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onDragEnd={() => setDraggingId(null)}
+                  className={`px-4 py-4 flex flex-wrap items-center gap-3 ${draggingId === item.id ? 'opacity-50' : ''} ${movingId === item.id ? 'opacity-60' : ''} cursor-grab active:cursor-grabbing`}
+                >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 truncate">{item.fileName}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
