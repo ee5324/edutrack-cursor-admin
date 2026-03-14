@@ -76,6 +76,7 @@ const LanguageElectiveRoster: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [formatOpen, setFormatOpen] = useState(false);
+  const [exampleTableOpen, setExampleTableOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingRoster, setLoadingRoster] = useState(false);
 
@@ -272,6 +273,44 @@ const LanguageElectiveRoster: React.FC = () => {
               <li>區塊結束：座號欄出現「合計」或「男」即結束該班。</li>
             </ul>
             <p className="text-slate-500">支援 .csv、.xlsx、.xls；CSV 請用 UTF-8。</p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setExampleTableOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-300"
+              >
+                {exampleTableOpen ? '收起範例' : '看範例表格'}
+              </button>
+              {exampleTableOpen && (
+                <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 inline-block">
+                  <p className="text-xs text-slate-500 mb-2">範例（擷取後會得到：101 班 座號 1 王小明、2 李小華）</p>
+                  <table className="text-xs border-collapse border border-slate-300">
+                    <tbody>
+                      <tr>
+                        <td className="border border-slate-300 px-2 py-1 bg-slate-100 font-medium">座號</td>
+                        <td className="border border-slate-300 px-2 py-1 bg-slate-100 font-medium">姓名</td>
+                        <td className="border border-slate-300 px-2 py-1 bg-amber-100 font-medium">班級</td>
+                        <td className="border border-slate-300 px-2 py-1 bg-slate-100 font-medium">101</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-300 px-2 py-1">1</td>
+                        <td className="border border-slate-300 px-2 py-1">王小明</td>
+                        <td className="border border-slate-300 px-2 py-1" colSpan={2} />
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-300 px-2 py-1">2</td>
+                        <td className="border border-slate-300 px-2 py-1">李小華</td>
+                        <td className="border border-slate-300 px-2 py-1" colSpan={2} />
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-300 px-2 py-1 text-slate-500">合計</td>
+                        <td className="border border-slate-300 px-2 py-1" colSpan={3} />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
