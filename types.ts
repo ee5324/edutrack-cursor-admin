@@ -25,10 +25,10 @@ export interface LanguageElectiveStudent {
   language: string;
 }
 
-/** 某學期語言選修名單（Firestore 一 doc 一學期） */
+/** 某學年語言選修名單（Firestore 一 doc 一學年，不分上下學期） */
 export interface LanguageElectiveRosterDoc {
   academicYear: string;
-  semester: string;
+  semester?: string; // 選填，相容舊資料；新資料以學年計可不填
   students: LanguageElectiveStudent[];
   updatedAt?: string;
 }

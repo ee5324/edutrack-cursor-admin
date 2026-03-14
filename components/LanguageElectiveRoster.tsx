@@ -69,7 +69,6 @@ function sheetToRows(sheet: XLSX.WorkSheet): string[][] {
 
 const LanguageElectiveRoster: React.FC = () => {
   const [academicYear, setAcademicYear] = useState('114');
-  const [semester, setSemester] = useState('上學期');
   const [students, setStudents] = useState<LanguageElectiveStudent[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchLanguage, setBatchLanguage] = useState('閩南語');
@@ -86,7 +85,7 @@ const LanguageElectiveRoster: React.FC = () => {
     setLoadingRoster(true);
     setError(null);
     try {
-      const doc = await getLanguageElectiveRoster(academicYear, semester);
+      const doc = await getLanguageElectiveRoster(academicYear);
       if (doc?.students?.length) setStudents(doc.students);
       else setStudents([]);
     } catch (e: any) {
@@ -94,7 +93,7 @@ const LanguageElectiveRoster: React.FC = () => {
     } finally {
       setLoadingRoster(false);
     }
-  }, [academicYear, semester]);
+  }, [academicYear]);
 
   useEffect(() => {
     loadSavedRoster();
@@ -182,7 +181,7 @@ const LanguageElectiveRoster: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      await saveLanguageElectiveRoster(academicYear, semester, students);
+      await saveLanguageElectiveRoster(academicYear, students);
     } catch (e: any) {
       setError(e?.message || '儲存失敗');
     } finally {
@@ -199,7 +198,7 @@ const LanguageElectiveRoster: React.FC = () => {
     const blob = new Blob([JSON.stringify(roster, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `language_elective_${academicYear}_${semester}_${Date.now()}.json`;
+    a.download = `language_elective_${academicYear}_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -212,11 +211,11 @@ const LanguageElectiveRoster: React.FC = () => {
           學生語言選修登錄
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          上傳 Excel 班級名單後，可依姓名繼承上一學期選修語言、手動修改或批次調整，並儲存至 Firebase。
+          上傳 Excel 班級名單後，可依姓名繼承過往學年選修語言、手動修改或批次調整，並儲存至 Firebase。（以學年計，不分上下學期）
         </p>
       </div>
 
-      {/* 學年度／學期 + 載入已儲存 */}
+      {/* 學年度 + 載入已儲存（以學年計，不分上下學期） */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-700">學年度</label>
@@ -227,17 +226,6 @@ const LanguageElectiveRoster: React.FC = () => {
             className="w-20 border rounded px-2 py-1.5 text-sm"
             placeholder="114"
           />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-slate-700">學期</label>
-          <select
-            value={semester}
-            onChange={(e) => setSemester(e.target.value)}
-            className="border rounded px-2 py-1.5 text-sm"
-          >
-            <option value="上學期">上學期</option>
-            <option value="下學期">下學期</option>
-          </select>
         </div>
         <button
           type="button"
@@ -265,7 +253,7 @@ const LanguageElectiveRoster: React.FC = () => {
         </button>
         {formatOpen && (
           <div className="p-4 pt-0 space-y-3 text-sm text-slate-700">
-            <p className="font-medium text-slate-800">請提供符合下列規則的試算表，系統會自動辨識「班級」區塊並擷取座號、姓名；上傳後會依「姓名」繼承上一學期選修語言。</p>
+            <p className="font-medium text-slate-800">請提供符合下列規則的試算表，系統會自動辨識「班級」區塊並擷取座號、姓名；上傳後會依「姓名」繼承過往學年選修語言。</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>表頭：某一儲存格同時包含「班」與「級」，其<strong>右側一格</strong>為班級名稱。</li>
               <li>座號：班級欄的<strong>左邊第 2 欄</strong>；姓名：<strong>左邊第 1 欄</strong>。</li>
@@ -332,7 +320,7 @@ const LanguageElectiveRoster: React.FC = () => {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
             <h2 className="text-lg font-semibold text-slate-800">
-              {academicYear} 學年{semester}（{students.length} 人）
+              {academicYear} 學年（{students.length} 人）
             </h2>
             <div className="flex items-center gap-2">
               <button

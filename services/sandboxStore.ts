@@ -333,12 +333,8 @@ export function sandboxSetExamPaperCheck(payload: { grade: string; domain: strin
 }
 
 // --- 學生語言選修登錄 ---
-function languageElectiveDocId(ay: string, sem: string) {
-  return `${ay}_${sem}`;
-}
-
-export function sandboxGetLanguageElectiveRoster(academicYear: string, semester: string): Promise<LanguageElectiveRosterDoc | null> {
-  const doc = store.languageElective[languageElectiveDocId(academicYear, semester)];
+export function sandboxGetLanguageElectiveRoster(academicYear: string): Promise<LanguageElectiveRosterDoc | null> {
+  const doc = store.languageElective[academicYear];
   return Promise.resolve(doc ?? null);
 }
 
@@ -346,11 +342,9 @@ export function sandboxGetAllLanguageElectiveRosters(): Promise<LanguageElective
   return Promise.resolve(Object.values(store.languageElective));
 }
 
-export function sandboxSaveLanguageElectiveRoster(academicYear: string, semester: string, students: { className: string; seat: string; name: string; language: string }[]): Promise<void> {
-  const id = languageElectiveDocId(academicYear, semester);
-  store.languageElective[id] = {
+export function sandboxSaveLanguageElectiveRoster(academicYear: string, students: { className: string; seat: string; name: string; language: string }[]): Promise<void> {
+  store.languageElective[academicYear] = {
     academicYear,
-    semester,
     students,
     updatedAt: new Date().toISOString(),
   };

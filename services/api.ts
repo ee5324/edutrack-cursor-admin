@@ -672,19 +672,20 @@ export async function setExamPaperCheck(payload: { grade: string; domain: string
 }
 
 // --- 學生語言選修登錄 (Language Elective) ---
-function languageElectiveDocId(academicYear: string, semester: string) {
-  return `${academicYear}_${semester}`;
+/** 以學年為 doc id（不分上下學期） */
+function languageElectiveDocId(academicYear: string) {
+  return academicYear;
 }
 
-export async function getLanguageElectiveRoster(academicYear: string, semester: string): Promise<LanguageElectiveRosterDoc | null> {
-  if (isSandbox()) return sandboxGetLanguageElectiveRoster(academicYear, semester);
+export async function getLanguageElectiveRoster(academicYear: string): Promise<LanguageElectiveRosterDoc | null> {
+  if (isSandbox()) return sandboxGetLanguageElectiveRoster(academicYear);
   const db = getDb();
   if (!db) return null;
-  const docSnap = await getDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, languageElectiveDocId(academicYear, semester)));
+  const docSnap = await getDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, languageElectiveDocId(academicYear)));
   if (!docSnap.exists()) return null;
   const data = docSnap.data();
   return {
-    academicYear: data.academicYear ?? '',
+    academicYear: data.academicYear ?? academicYear,
     semester: data.semester ?? '',
     students: Array.isArray(data.students) ? data.students : [],
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
@@ -696,23 +697,17 @@ export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveR
   const db = getDb();
   if (!db) return [];
   const snap = await getDocs(collection(db, COLLECTIONS.LANGUAGE_ELECTIVE));
-  const semOrder = (a: string, b: string) => {
-    const [ayA, semA] = a.split('_');
-    const [ayB, semB] = b.split('_');
-    if (ayA !== ayB) return parseInt(ayB, 10) - parseInt(ayA, 10);
-    return semB === '下學期' ? 1 : semA === '下學期' ? -1 : 0;
-  };
   return snap.docs
     .map((d) => {
       const data = d.data();
       return {
-        academicYear: data.academicYear ?? '',
+        academicYear: data.academicYear ?? d.id,
         semester: data.semester ?? '',
         students: Array.isArray(data.students) ? data.students : [],
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
       };
     })
-    .sort((a, b) => semOrder(languageElectiveDocId(a.academicYear, a.semester), languageElectiveDocId(b.academicYear, b.semester)));
+    .sort((a, b) => parseInt(b.academicYear, 10) - parseInt(a.academicYear, 10));
 }
 
 /** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆） */
@@ -726,19 +721,18 @@ export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDo
   return nameToLang;
 }
 
-export async function saveLanguageElectiveRoster(academicYear: string, semester: string, students: LanguageElectiveStudent[]): Promise<void> {
+export async function saveLanguageElectiveRoster(academicYear: string, students: LanguageElectiveStudent[]): Promise<void> {
   if (isSandbox()) {
-    await sandboxSaveLanguageElectiveRoster(academicYear, semester, students);
+    await sandboxSaveLanguageElectiveRoster(academicYear, students);
     return;
   }
   const db = getDb();
   if (!db) throw new Error('Firebase 未初始化');
-  const id = languageElectiveDocId(academicYear, semester);
+  const id = languageElectiveDocId(academicYear);
   await setDoc(
     doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, id),
     {
       academicYear,
-      semester,
       students,
       updatedAt: serverTimestamp(),
     },
