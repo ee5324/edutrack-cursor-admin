@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map, FileText } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -12,12 +12,39 @@ interface LayoutProps {
   onSignOut?: () => void;
 }
 
+/** 單一選單項目 */
+interface MenuItemFlat {
+  id: string;
+  label: string;
+  icon: typeof CalendarDays;
+  badge?: number;
+}
+/** 巢狀群組：本土語點名單 > 點名單製作、學生語言選修登錄 */
+interface MenuItemGroup {
+  id: string;
+  label: string;
+  icon: typeof ClipboardList;
+  children: { id: string; label: string }[];
+}
+
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archiveCount, user, onSignOut }) => {
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const [nativeLangOpen, setNativeLangOpen] = useState(true);
 
-  const menuItems = [
+  const menuGroups: MenuItemGroup[] = [
+    {
+      id: 'native-lang',
+      label: '本土語點名單',
+      icon: ClipboardList,
+      children: [
+        { id: 'attendance', label: '點名單製作' },
+        { id: 'language-elective', label: '學生語言選修登錄' },
+      ],
+    },
+  ];
+
+  const menuItemsFlat: MenuItemFlat[] = [
     { id: 'calendar', label: '行政行事曆', icon: CalendarDays },
-    { id: 'attendance', label: '本土語點名單', icon: ClipboardList },
     { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
     { id: 'vendors', label: '廠商管理', icon: Store },
@@ -26,9 +53,61 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
     { id: 'settings', label: '系統設定', icon: Settings },
   ];
 
+  /** 依 activeTab 取得目前頁面標題（含巢狀子項目） */
+  const getActiveLabel = (): string => {
+    for (const g of menuGroups) {
+      const child = g.children.find((c) => c.id === activeTab);
+      if (child) return `${g.label} · ${child.label}`;
+    }
+    const flat = menuItemsFlat.find((i) => i.id === activeTab);
+    return flat?.label ?? '';
+  };
+
   const navContent = (
     <nav className="flex flex-col gap-0.5 w-full py-3">
-      {menuItems.map((item) => {
+      {/* 巢狀：本土語點名單 */}
+      {menuGroups.map((group) => {
+        const GroupIcon = group.icon;
+        const isActive = group.children.some((c) => c.id === activeTab);
+        return (
+          <div key={group.id} className="flex flex-col gap-0.5">
+            <button
+              type="button"
+              onClick={() => setNativeLangOpen(!nativeLangOpen)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left w-full ${
+                isActive ? 'text-white bg-slate-600' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              <GroupIcon size={18} className="flex-shrink-0" />
+              <span className="truncate flex-1">{group.label}</span>
+              {nativeLangOpen ? (
+                <ChevronDown size={16} className="flex-shrink-0" />
+              ) : (
+                <ChevronRight size={16} className="flex-shrink-0" />
+              )}
+            </button>
+            {nativeLangOpen &&
+              group.children.map((child) => (
+                <button
+                  key={child.id}
+                  onClick={() => {
+                    onTabChange(child.id);
+                    setIsNavOpen(false);
+                  }}
+                  className={`flex items-center gap-2.5 pl-8 pr-3 py-2 rounded-lg text-sm font-medium transition-colors text-left w-full ${
+                    activeTab === child.id
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  }`}
+                >
+                  <span className="truncate">{child.label}</span>
+                </button>
+              ))}
+          </div>
+        );
+      })}
+      {/* 其餘單一項目 */}
+      {menuItemsFlat.map((item) => {
         const Icon = item.icon;
         return (
           <button
@@ -109,7 +188,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
               {isNavOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
             <span className="text-lg font-semibold text-gray-800">
-              {menuItems.find(i => i.id === activeTab)?.label}
+              {getActiveLabel() || menuItemsFlat.find(i => i.id === activeTab)?.label}
             </span>
           </div>
         </header>

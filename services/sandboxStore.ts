@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc } from '../types';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -102,6 +102,7 @@ const store = {
   examPapers: [] as ExamPaper[],
   examPaperFolders: [] as ExamPaperFolder[],
   examPaperChecks: [] as ExamPaperCheck[],
+  languageElective: {} as Record<string, LanguageElectiveRosterDoc>,
 };
 
 // --- Courses & Students ---
@@ -329,6 +330,31 @@ export function sandboxSetExamPaperCheck(payload: { grade: string; domain: strin
   if (idx >= 0) store.examPaperChecks[idx] = row;
   else store.examPaperChecks.push(row);
   return Promise.resolve({ success: true });
+}
+
+// --- 學生語言選修登錄 ---
+function languageElectiveDocId(ay: string, sem: string) {
+  return `${ay}_${sem}`;
+}
+
+export function sandboxGetLanguageElectiveRoster(academicYear: string, semester: string): Promise<LanguageElectiveRosterDoc | null> {
+  const doc = store.languageElective[languageElectiveDocId(academicYear, semester)];
+  return Promise.resolve(doc ?? null);
+}
+
+export function sandboxGetAllLanguageElectiveRosters(): Promise<LanguageElectiveRosterDoc[]> {
+  return Promise.resolve(Object.values(store.languageElective));
+}
+
+export function sandboxSaveLanguageElectiveRoster(academicYear: string, semester: string, students: { className: string; seat: string; name: string; language: string }[]): Promise<void> {
+  const id = languageElectiveDocId(academicYear, semester);
+  store.languageElective[id] = {
+    academicYear,
+    semester,
+    students,
+    updatedAt: new Date().toISOString(),
+  };
+  return Promise.resolve();
 }
 
 // --- Archive ---

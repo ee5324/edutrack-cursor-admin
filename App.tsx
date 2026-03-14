@@ -3,6 +3,7 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 import AllowedUsersManager from './components/AllowedUsersManager';
 import AttendanceGenerator from './AttendanceGenerator';
+import LanguageElectiveRoster from './components/LanguageElectiveRoster';
 import TodoCalendar from './components/TodoCalendar';
 import CampusMap from './components/CampusMap';
 import AwardGenerator from './AwardGenerator'; 
@@ -322,6 +323,8 @@ const App: React.FC = () => {
         return <TodoCalendar />;
       case 'attendance':
         return <AttendanceGenerator />;
+      case 'language-elective':
+        return <LanguageElectiveRoster />;
       case 'campus-map':
         return <CampusMap />;
       case 'awards':

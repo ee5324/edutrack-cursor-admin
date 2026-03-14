@@ -1,11 +1,13 @@
 /**
  * 統一 API 層
  * - 文字資料：Firebase Firestore（Sandbox 時改為記憶體模擬）
+ * - 本土語名單紀錄（課程＋學生）：僅存於 Firestore，不寫入 Google 試算表；GAS 僅負責建立 Drive 點名單檔案。
  * - 附檔／點名單檔案／頒獎 Doc：GAS → Google Drive（Sandbox 時為 mock）
  */
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   addDoc,
@@ -18,7 +20,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -49,6 +51,9 @@ import {
   sandboxDeleteExamPaper,
   sandboxGetExamPaperChecks,
   sandboxSetExamPaperCheck,
+  sandboxGetLanguageElectiveRoster,
+  sandboxGetAllLanguageElectiveRosters,
+  sandboxSaveLanguageElectiveRoster,
 } from './sandboxStore';
 
 const GAS_API_URL = import.meta.env.VITE_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbzWyYHtUbAMIFGBtMtXGvdXuAIiml1pAdf0qKykQ3vzCY5QFdAsMjCoyZ_Znam7oxRC/exec';
@@ -125,7 +130,7 @@ export async function getCourseStudents(courseId: string): Promise<Pick<Student,
   });
 }
 
-/** 先呼叫 GAS 建立點名單檔案於 Drive，再將課程與學生寫入 Firestore */
+/** 先呼叫 GAS 建立點名單檔案於 Drive，再將課程與學生寫入 Firestore（不寫入 GS） */
 export async function saveCourseConfig(payload: {
   academicYear: string;
   semester: string;
@@ -664,6 +669,81 @@ export async function setExamPaperCheck(payload: { grade: string; domain: string
     { merge: true }
   );
   return { success: true };
+}
+
+// --- 學生語言選修登錄 (Language Elective) ---
+function languageElectiveDocId(academicYear: string, semester: string) {
+  return `${academicYear}_${semester}`;
+}
+
+export async function getLanguageElectiveRoster(academicYear: string, semester: string): Promise<LanguageElectiveRosterDoc | null> {
+  if (isSandbox()) return sandboxGetLanguageElectiveRoster(academicYear, semester);
+  const db = getDb();
+  if (!db) return null;
+  const docSnap = await getDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, languageElectiveDocId(academicYear, semester)));
+  if (!docSnap.exists()) return null;
+  const data = docSnap.data();
+  return {
+    academicYear: data.academicYear ?? '',
+    semester: data.semester ?? '',
+    students: Array.isArray(data.students) ? data.students : [],
+    updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
+  };
+}
+
+export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveRosterDoc[]> {
+  if (isSandbox()) return sandboxGetAllLanguageElectiveRosters();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(collection(db, COLLECTIONS.LANGUAGE_ELECTIVE));
+  const semOrder = (a: string, b: string) => {
+    const [ayA, semA] = a.split('_');
+    const [ayB, semB] = b.split('_');
+    if (ayA !== ayB) return parseInt(ayB, 10) - parseInt(ayA, 10);
+    return semB === '下學期' ? 1 : semA === '下學期' ? -1 : 0;
+  };
+  return snap.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        academicYear: data.academicYear ?? '',
+        semester: data.semester ?? '',
+        students: Array.isArray(data.students) ? data.students : [],
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
+      };
+    })
+    .sort((a, b) => semOrder(languageElectiveDocId(a.academicYear, a.semester), languageElectiveDocId(b.academicYear, b.semester)));
+}
+
+/** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆） */
+export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDoc[]): Record<string, string> {
+  const nameToLang: Record<string, string> = {};
+  for (const r of rosters) {
+    for (const s of r.students || []) {
+      if (s.name && s.language) nameToLang[s.name] = s.language;
+    }
+  }
+  return nameToLang;
+}
+
+export async function saveLanguageElectiveRoster(academicYear: string, semester: string, students: LanguageElectiveStudent[]): Promise<void> {
+  if (isSandbox()) {
+    await sandboxSaveLanguageElectiveRoster(academicYear, semester, students);
+    return;
+  }
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = languageElectiveDocId(academicYear, semester);
+  await setDoc(
+    doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, id),
+    {
+      academicYear,
+      semester,
+      students,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 // --- Setup (GAS：檢查 Drive 等；Sandbox 時回傳說明) ---

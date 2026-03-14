@@ -29,7 +29,7 @@
 
 ### 1. 點名單試算表（本土語點名單製作）
 
-- **流程**：使用者在本系統儲存一筆「課程＋學生」→ 前端呼叫 GAS 的 **`CREATE_ATTENDANCE_FILE`**（或舊版 `SAVE_CONFIG` 時一併建立）→ GAS 在 Drive 建立一份**新試算表**當作點名單。
+- **流程**：使用者在本系統儲存一筆「課程＋學生」→ 前端先呼叫 GAS 的 **`CREATE_ATTENDANCE_FILE`**（或相容的 `SAVE_CONFIG`）→ GAS 僅在 Drive 建立一份**新試算表**當作點名單；**課程與學生名單只寫入 Firestore，不寫入 Google 試算表**。
 - **GAS 實作**：`DriveService.gs` 的 **`createAttendanceFileInDrive`**。
 - **Drive 結構**：
   - 根目錄：`ROOT_FOLDER_ID`

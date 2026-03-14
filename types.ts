@@ -17,6 +17,22 @@ export interface AwardStudent {
   awardName: string;
 }
 
+/** 學生語言選修登錄：單一學生一筆 */
+export interface LanguageElectiveStudent {
+  className: string;
+  seat: string;
+  name: string;
+  language: string;
+}
+
+/** 某學期語言選修名單（Firestore 一 doc 一學期） */
+export interface LanguageElectiveRosterDoc {
+  academicYear: string;
+  semester: string;
+  students: LanguageElectiveStudent[];
+  updatedAt?: string;
+}
+
 /** 頒獎 Doc 輸出選項（給 GAS / 整併用） */
 export interface AwardExportOptions {
   /** true = 低中高分年級整併為一份「總通知單」Doc；false = 維持每年級段各一份 */

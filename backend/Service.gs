@@ -56,63 +56,24 @@ function createAttendanceFileOnly(payload) {
 }
 
 /**
- * 儲存前端傳來的點名單設定
+ * 儲存前端傳來的點名單設定（僅建立 Drive 點名單檔案，不寫入試算表）
+ * 本土語名單紀錄已改由前端寫入 Firebase，此處僅回傳 Drive 檔案資訊，供舊版或相容用。
  */
 function saveCourseConfig(payload) {
-  initSheets();
-
   const courseId = Utilities.getUuid();
-  const timestamp = new Date();
-  
-  // 1. 先產生 Drive 檔案 (Excel/Sheet) 取得連結
   let driveFileResult = null;
-  let fileUrl = '';
   try {
     driveFileResult = createAttendanceFileInDrive(payload);
-    fileUrl = driveFileResult.url;
   } catch (e) {
     console.error("Error creating Drive file: " + e.toString());
     driveFileResult = { error: e.toString() };
   }
-
-  // 2. 儲存課程表頭資訊 (Courses_Config)
-  // 注意欄位順序需對應 Database.gs 的 initSheets appendRow
-  // 欄位: id, academic_year, semester, course_name, instructor, class_time, location, created_at, file_url, start_date, end_date, selected_days
-  const courseRow = [
-    courseId,
-    payload.academicYear || '',
-    payload.semester || '',
-    payload.courseName || '',
-    payload.instructorName || '',
-    payload.classTime || '',
-    payload.location || '',
-    timestamp,
-    fileUrl,
-    payload.startDate || '', // 新增
-    payload.endDate || '',   // 新增
-    JSON.stringify(payload.selectedDays || []) // 新增 (存成 JSON 字串)
-  ];
-  dbInsert(SHEETS.COURSES, courseRow);
-
-  // 3. 儲存該課程的學生名單 (Students_Data)
-  if (payload.students && Array.isArray(payload.students) && payload.students.length > 0) {
-    payload.students.forEach(student => {
-      const studentRow = [
-        courseId,
-        student.id || '',
-        student.period || '',
-        student.className || '',
-        student.name || ''
-      ];
-      dbInsert(SHEETS.STUDENTS, studentRow);
-    });
-  }
-
-  return { 
-    courseId: courseId, 
-    recordCount: payload.students ? payload.students.length : 0,
+  const recordCount = (payload.students && Array.isArray(payload.students)) ? payload.students.length : 0;
+  return {
+    courseId: courseId,
+    recordCount: recordCount,
     driveFile: driveFileResult,
-    message: 'Saved successfully' 
+    message: 'Drive file created (course/student records are stored in Firebase only).'
   };
 }
 
