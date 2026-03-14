@@ -7,8 +7,7 @@
    npm run dev
    ```
 2. **用本機瀏覽器開啟**（最穩定）：
-   - 本專案網址為 **http://localhost:5173**
-   - 直接用 **Chrome、Safari 或 Edge** 開啟：`http://localhost:5173`
+   - 本專案預設網址為 **http://localhost:5180**（見 `vite.config.ts` 的 `server.port`）
    - 或執行 **`npm run dev:open`**，會自動用預設瀏覽器開啟
 3. 若 Cursor 的 Simple Browser 無法開網址，請一律改用上述本機瀏覽器開啟。
 
@@ -22,9 +21,11 @@
 |------------|----------|--------------|
 | 左側選單、整體版面 | `components/Layout.tsx` | — |
 | 行政行事曆、待辦 | `components/TodoCalendar.tsx` | `services/api.ts`：getTodos, saveTodo, deleteTodo, uploadAttachment… |
-| 本土語點名單製作 | `AttendanceGenerator.tsx` | api：getHistory, getCourseStudents, saveCourseConfig, importFromSpreadsheet |
+| 本土語點名單 · 點名單製作 | `AttendanceGenerator.tsx` | api：getHistory, getCourseStudents, saveCourseConfig, importFromSpreadsheet |
+| 本土語點名單 · 學生語言選修登錄 | `components/LanguageElectiveRoster.tsx` | api：getLanguageElectiveRoster, getAllLanguageElectiveRosters, saveLanguageElectiveRoster（Firestore `edutrack_language_elective`） |
 | 頒獎通知 | `AwardGenerator.tsx` | api：getAwardHistory, saveAwardRecord, getAllKnownStudents, createAwardDocs… |
 | 廠商管理 | `VendorManager.tsx` | api：getVendors, saveVendor, deleteVendor |
+| 考卷存檔 | `components/ExamPapersTab.tsx` | api：getExamPaperFolders, getExamPapers… |
 | 事項列檔 | `ArchiveManager.tsx` | api：getArchiveTasks, saveArchiveTask, deleteArchiveTask |
 | 系統設定 | `App.tsx`（SettingsTab） | api：setupSystem |
 
@@ -42,12 +43,11 @@
 
 本系統設計成可與其他系統共用**同一個 Firebase 專案**，不另開新專案、也不影響其他系統：
 
-- 所有 Firestore 集合都帶**前綴**（預設 `edutrack_`），例如：`edutrack_courses`、`edutrack_students`、`edutrack_awards`、`edutrack_vendors`、`edutrack_archive`、`edutrack_todos`
-- 只會讀寫以上六個集合，不會碰到其他系統的 collections
+- 所有 Firestore 集合都帶**前綴**（預設 `edutrack_`），例如：`edutrack_courses`、`edutrack_students`、`edutrack_awards`、`edutrack_vendors`、`edutrack_archive`、`edutrack_todos`、`edutrack_language_elective`、`edutrack_exam_papers`、`edutrack_exam_paper_folders`、`edutrack_exam_paper_checks`、`edutrack_allowed_users`
+- 只會讀寫以上集合，不會碰到其他系統的 collections
 - 前綴可在 `.env` 用 `VITE_FIREBASE_COLLECTION_PREFIX` 自訂（須與規則一致）
 
-**Firestore 規則**：不需要提供你現有的規則也可以。專案裡有 **`firestore-rules-snippet.rules`**，裡面是「只針對本系統六個集合」的規則片段，你只要把該片段**複製、貼進**現有 `firestore.rules` 的 `match /databases/{database}/documents { ... }` 大括號內即可。若你自訂了集合前綴，把片段裡的 `edutrack_` 改成相同前綴。  
-若你願意提供現有規則全文，我可以幫你整份合併好。
+**Firestore 規則**：專案根目錄的 **`firestore.rules`** 已含本系統與其他系統的完整規則。部署時到 Firebase Console → Firestore → 規則，貼上 `firestore.rules` 內容並發布即可。換電腦後 pull 會一併取得最新規則，利於持續調整。
 
 ## 環境設定
 
@@ -72,6 +72,18 @@
 4. 重新整理頁面會還原為預設範例資料
 
 正式環境請將 `VITE_SANDBOX` 設為 `false` 或移除，並設定 Firebase 與 GAS。
+
+## 換電腦／協作（pull 後延續設定與紀錄）
+
+在另一台電腦要接續開發或調整時：
+
+1. **Clone 或 pull** 本專案後執行 `npm install`。
+2. **環境**：複製 `.env.example` 為 `.env` 並填入 Firebase、GAS 等（`.env` 不提交，每台電腦需自建）。
+3. **Firestore 規則**：repo 內的 `firestore.rules` 即為目前使用的規則；若在 Firebase Console 有改過規則，請把 Console 的規則同步回專案並 push，這樣 pull 到別台電腦時規則一致。
+4. **資料與紀錄**：課程、學生、頒獎、廠商、事項列檔、待辦、**學生語言選修登錄**、考卷存檔等皆存於 Firebase Firestore，只要登入同一 Firebase 專案即可看到相同資料，無需另外搬移。
+5. **GAS 部署**：若使用 clasp 自動 push／部署，請在該電腦依 `backend/README.md` 設定 `backend/.clasp.json`（Script ID 等）；未設定則不影響前端，僅無法從指令列部署 GAS。
+
+如此即可在任一台電腦 pull 後持續調整，並透過 push 讓其他電腦與協作者取得最新程式與規則。
 
 ## 執行（正式環境）
 
