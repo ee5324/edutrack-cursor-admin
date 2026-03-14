@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, FileSpreadsheet, HelpCircle, Download, Users, ChevronDown, ChevronRight, Save, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, HelpCircle, Download, Users, ChevronDown, ChevronRight, Save, Loader2, Plus, Trash2, Settings2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { LanguageElectiveStudent } from '../types';
 import {
@@ -12,7 +12,23 @@ import {
 /** 解析後的名單：班級 -> 座號 -> 姓名 */
 type RosterMap = Record<string, Record<string, string>>;
 
-const LANGUAGE_OPTIONS = ['閩南語', '客家語', '原住民族語', '新住民語', '手語', '無／未選'];
+const LANGUAGE_OPTIONS_KEY = 'edutrack_language_options';
+const DEFAULT_LANGUAGE_OPTIONS = ['閩南語', '客家語', '原住民族語', '新住民語', '手語', '無／未選'];
+
+function loadLanguageOptions(): string[] {
+  try {
+    const raw = localStorage.getItem(LANGUAGE_OPTIONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  return [...DEFAULT_LANGUAGE_OPTIONS];
+}
+
+function saveLanguageOptions(options: string[]) {
+  localStorage.setItem(LANGUAGE_OPTIONS_KEY, JSON.stringify(options));
+}
 
 function parseRosterFromRows(rows: string[][]): RosterMap {
   const roster: RosterMap = {};
@@ -43,7 +59,7 @@ function parseRosterFromRows(rows: string[][]): RosterMap {
   return roster;
 }
 
-function rosterMapToStudents(roster: RosterMap, nameToLanguage: Record<string, string>): LanguageElectiveStudent[] {
+function rosterMapToStudents(roster: RosterMap, nameToLanguage: Record<string, string>, defaultLanguage: string): LanguageElectiveStudent[] {
   const list: LanguageElectiveStudent[] = [];
   const classNames = Object.keys(roster).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   for (const className of classNames) {
@@ -55,7 +71,7 @@ function rosterMapToStudents(roster: RosterMap, nameToLanguage: Record<string, s
         className,
         seat,
         name,
-        language: nameToLanguage[name] ?? '無／未選',
+        language: nameToLanguage[name] ?? defaultLanguage,
       });
     }
   }
@@ -71,15 +87,40 @@ const LanguageElectiveRoster: React.FC = () => {
   const [academicYear, setAcademicYear] = useState('114');
   const [students, setStudents] = useState<LanguageElectiveStudent[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [batchLanguage, setBatchLanguage] = useState('閩南語');
+  const [languageOptions, setLanguageOptions] = useState<string[]>(() => loadLanguageOptions());
+  const [batchLanguage, setBatchLanguage] = useState(() => loadLanguageOptions()[0] ?? '閩南語');
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [formatOpen, setFormatOpen] = useState(false);
   const [exampleTableOpen, setExampleTableOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingRoster, setLoadingRoster] = useState(false);
+  const [languageOptionsOpen, setLanguageOptionsOpen] = useState(false);
+  const [newLanguageInput, setNewLanguageInput] = useState('');
 
   const hasRoster = students.length > 0;
+  const defaultLanguage = languageOptions[0] ?? '無／未選';
+
+  const addLanguageOption = () => {
+    const v = newLanguageInput.trim();
+    if (!v || languageOptions.includes(v)) return;
+    const next = [...languageOptions, v];
+    setLanguageOptions(next);
+    saveLanguageOptions(next);
+    setNewLanguageInput('');
+  };
+
+  const removeLanguageOption = (opt: string) => {
+    if (languageOptions.length <= 1) return;
+    const next = languageOptions.filter((o) => o !== opt);
+    setLanguageOptions(next);
+    saveLanguageOptions(next);
+    if (batchLanguage === opt) setBatchLanguage(next[0] ?? '');
+  };
+
+  useEffect(() => {
+    if (languageOptions.length && !languageOptions.includes(batchLanguage)) setBatchLanguage(languageOptions[0]);
+  }, [languageOptions]);
 
   const loadSavedRoster = useCallback(async () => {
     setLoadingRoster(true);
@@ -133,7 +174,8 @@ const LanguageElectiveRoster: React.FC = () => {
 
         const allRosters = await getAllLanguageElectiveRosters();
         const nameToLanguage = buildNameToLanguageFromRosters(allRosters);
-        const list = rosterMapToStudents(roster, nameToLanguage);
+        const defaultLang = languageOptions[0] ?? '無／未選';
+        const list = rosterMapToStudents(roster, nameToLanguage, defaultLang);
         setStudents(list);
         setSelectedIds(new Set());
       } catch (err: any) {
@@ -236,6 +278,63 @@ const LanguageElectiveRoster: React.FC = () => {
           {loadingRoster ? <Loader2 size={14} className="animate-spin" /> : null}
           載入已儲存名單
         </button>
+      </div>
+
+      {/* 管理語言類別（自訂，存於瀏覽器） */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setLanguageOptionsOpen(!languageOptionsOpen)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-left"
+        >
+          <span className="font-semibold text-slate-800 flex items-center gap-2">
+            <Settings2 size={18} />
+            管理語言類別
+          </span>
+          {languageOptionsOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </button>
+        {languageOptionsOpen && (
+          <div className="p-4 pt-0 space-y-3">
+            <p className="text-sm text-slate-600">選修語言下拉選單由此管理，至少保留一項。新增後會即時套用。</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={newLanguageInput}
+                onChange={(e) => setNewLanguageInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addLanguageOption())}
+                placeholder="輸入新類別名稱"
+                className="border rounded px-3 py-1.5 text-sm w-40"
+              />
+              <button
+                type="button"
+                onClick={addLanguageOption}
+                disabled={!newLanguageInput.trim() || languageOptions.includes(newLanguageInput.trim())}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Plus size={14} /> 新增
+              </button>
+            </div>
+            <ul className="flex flex-wrap gap-2">
+              {languageOptions.map((opt) => (
+                <li
+                  key={opt}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-800 text-sm"
+                >
+                  <span>{opt}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeLanguageOption(opt)}
+                    disabled={languageOptions.length <= 1}
+                    className="text-slate-400 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="刪除此類別"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Excel 格式說明（可收合） */}
@@ -358,7 +457,7 @@ const LanguageElectiveRoster: React.FC = () => {
               onChange={(e) => setBatchLanguage(e.target.value)}
               className="border rounded px-2 py-1 text-sm"
             >
-              {LANGUAGE_OPTIONS.map((opt) => (
+              {languageOptions.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>
@@ -404,9 +503,13 @@ const LanguageElectiveRoster: React.FC = () => {
                         onChange={(e) => updateStudentLanguage(i, e.target.value)}
                         className="border rounded px-2 py-1 text-sm w-full max-w-[140px]"
                       >
-                        {LANGUAGE_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
+                        {(() => {
+                          const opts = new Set(languageOptions);
+                          if (s.language && !opts.has(s.language)) opts.add(s.language);
+                          return Array.from(opts).map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ));
+                        })()}
                       </select>
                     </td>
                   </tr>

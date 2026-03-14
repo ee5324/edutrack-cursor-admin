@@ -5,6 +5,7 @@ import CourseNotification from './components/CourseNotification';
 import Modal from './components/Modal';
 import { AttendanceTableData, Student } from './types';
 import { getHistory, getCourseStudents, importFromSpreadsheet, saveCourseConfig } from './services/api';
+import RosterStudentSource, { ROSTER_DRAG_TYPE } from './components/RosterStudentSource';
 
 const AttendanceGenerator: React.FC = () => {
     // Basic Info
@@ -447,7 +448,9 @@ const AttendanceGenerator: React.FC = () => {
                              <div className="flex items-center"><Users size={18} className="mr-2"/> 學生名單</div>
                              {parsedStudents.length > 0 && <span className="text-sm bg-green-100 text-green-800 px-2 py-1 rounded">{parsedStudents.length} 人</span>}
                          </h3>
-                         
+                         <div className="mb-4">
+                             <RosterStudentSource academicYear={academicYear} defaultCollapsed hint="拖曳至下方名單" />
+                         </div>
                          <div className="flex-1 flex flex-col space-y-4">
                              <div className="flex-1">
                                  <label className="block text-sm font-medium text-gray-600 mb-1">貼上名單 (支援 [第一節] 標籤區隔)</label>
@@ -466,8 +469,25 @@ const AttendanceGenerator: React.FC = () => {
                              </div>
 
                              <div className="flex-1 border-t pt-4 flex flex-col overflow-hidden">
-                                 <p className="text-sm font-bold text-gray-700 mb-2">解析結果預覽</p>
-                                 <div className="flex-1 overflow-y-auto border rounded bg-gray-50 p-0">
+                                 <p className="text-sm font-bold text-gray-700 mb-2">解析結果預覽（可從上方語言選修名單拖曳加入）</p>
+                                 <div
+                                     className="flex-1 overflow-y-auto border rounded bg-gray-50 p-0"
+                                     onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                                     onDrop={(e) => {
+                                         e.preventDefault();
+                                         const raw = e.dataTransfer.getData(ROSTER_DRAG_TYPE);
+                                         if (!raw) return;
+                                         try {
+                                             const { className, name } = JSON.parse(raw);
+                                             if (className && name) {
+                                                 const nextId = parsedStudents.length > 0
+                                                     ? String(Math.max(...parsedStudents.map((s) => parseInt(s.id, 10) || 0)) + 1)
+                                                     : '1';
+                                                 setParsedStudents((prev) => [...prev, { id: nextId, period: defaultPeriod, className, name }]);
+                                             }
+                                         } catch (_) {}
+                                     }}
+                                 >
                                      <table className="w-full text-sm text-left">
                                          <thead className="bg-gray-100 sticky top-0">
                                              <tr>

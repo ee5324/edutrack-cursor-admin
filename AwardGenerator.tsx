@@ -5,6 +5,7 @@ import AwardNotification from './components/AwardNotification';
 import Modal from './components/Modal';
 import * as XLSX from 'xlsx';
 import { getAllKnownStudents, getAwardHistory, saveAwardRecord, createAwardDocs, createAwardSummaryDocs } from './services/api';
+import RosterStudentSource, { ROSTER_DRAG_TYPE } from './components/RosterStudentSource';
 
 const AwardGenerator: React.FC = () => {
     // Input States
@@ -45,6 +46,8 @@ const AwardGenerator: React.FC = () => {
     
     // Batch List Input
     const [inputText, setInputText] = useState('');
+    // 語言選修名單學年（用於從名單拖曳加入）
+    const [rosterYear, setRosterYear] = useState('114');
 
     // --- Effects ---
 
@@ -703,6 +706,13 @@ const AwardGenerator: React.FC = () => {
                                     </div>
                                 </>
                              )}
+                             <div className="mt-4">
+                                 <div className="flex items-center gap-2 mb-2">
+                                     <label className="text-xs font-medium text-gray-500">名單學年</label>
+                                     <input type="text" value={rosterYear} onChange={(e) => setRosterYear(e.target.value)} className="w-14 border rounded px-2 py-1 text-sm" placeholder="114" />
+                                 </div>
+                                 <RosterStudentSource academicYear={rosterYear} defaultCollapsed hint="拖曳至右側名單" />
+                             </div>
                         </div>
                     </div>
                 </div>
@@ -719,7 +729,22 @@ const AwardGenerator: React.FC = () => {
                         </div>
                     </div>
                     
-                    <div className="flex-1 overflow-auto p-0">
+                    <div
+                        className="flex-1 overflow-auto p-0"
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            const raw = e.dataTransfer.getData(ROSTER_DRAG_TYPE);
+                            if (!raw) return;
+                            try {
+                                const { className, name } = JSON.parse(raw);
+                                if (className && name) {
+                                    const awardName = groupInput.awardName || manualInput.awardName || '獲獎';
+                                    setParsedStudents((prev) => [...prev, { className, name, awardName }]);
+                                }
+                            } catch (_) {}
+                        }}
+                    >
                         {parsedStudents.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-gray-400">
                                 <Search size={48} className="mb-2 opacity-20"/>
