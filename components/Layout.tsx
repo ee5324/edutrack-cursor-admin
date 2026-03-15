@@ -19,7 +19,7 @@ interface MenuItemFlat {
   icon: typeof CalendarDays;
   badge?: number;
 }
-/** 巢狀群組：本土語點名單 > 學生查詢、點名單製作（名單來源為頂層「學生名單」） */
+/** 巢狀群組：本土語點名單 > 點名單製作（名單來源為頂層「學生名單」） */
 interface MenuItemGroup {
   id: string;
   label: string;
@@ -37,7 +37,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
       label: '本土語點名單',
       icon: ClipboardList,
       children: [
-        { id: 'language-elective', label: '學生查詢' },
         { id: 'attendance', label: '點名單製作' },
       ],
     },
@@ -64,8 +63,38 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
     return flat?.label ?? '';
   };
 
+  /** 選單順序：前兩項為行政行事曆、學生名單，其餘依 menuItemsFlat 順序；巢狀群組插在第二項之後 */
+  const menuItemsFirst = menuItemsFlat.filter((i) => i.id === 'calendar' || i.id === 'student-roster');
+  const menuItemsRest = menuItemsFlat.filter((i) => i.id !== 'calendar' && i.id !== 'student-roster');
+
   const navContent = (
     <nav className="flex flex-col gap-0.5 w-full py-3">
+      {/* 第一位：行政行事曆；第二位：學生名單 */}
+      {menuItemsFirst.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.id}
+            onClick={() => {
+              onTabChange(item.id);
+              setIsNavOpen(false);
+            }}
+            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left w-full ${
+              activeTab === item.id
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <Icon size={18} className="flex-shrink-0" />
+            <span className="truncate flex-1">{item.label}</span>
+            {item.badge != null && item.badge > 0 && (
+              <span className="flex-shrink-0 min-w-[1.25rem] text-center text-xs bg-amber-500 text-white rounded-full px-1.5">
+                {item.badge}
+              </span>
+            )}
+          </button>
+        );
+      })}
       {/* 巢狀：本土語點名單 */}
       {menuGroups.map((group) => {
         const GroupIcon = group.icon;
@@ -108,7 +137,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
         );
       })}
       {/* 其餘單一項目 */}
-      {menuItemsFlat.map((item) => {
+      {menuItemsRest.map((item) => {
         const Icon = item.icon;
         return (
           <button
