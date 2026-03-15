@@ -725,6 +725,29 @@ export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDo
   return nameToLang;
 }
 
+/** Firestore 不接受 undefined，寫入前將學生與班別設定中的 undefined 轉為可序列化值 */
+function sanitizeLanguageElectivePayload(
+  students: LanguageElectiveStudent[],
+  languageClassSettings?: LanguageClassSetting[]
+) {
+  const studentsPayload = students.map((s) => ({
+    className: s.className ?? '',
+    seat: s.seat ?? '',
+    name: s.name ?? '',
+    language: s.language ?? '',
+    languageClass: s.languageClass ?? null,
+  }));
+  const settingsPayload =
+    languageClassSettings?.map((s) => ({
+      id: s.id ?? '',
+      name: s.name ?? '',
+      classroom: s.classroom ?? null,
+      time: s.time ?? null,
+      teacher: s.teacher ?? null,
+    })) ?? undefined;
+  return { studentsPayload, settingsPayload };
+}
+
 export async function saveLanguageElectiveRoster(
   academicYear: string,
   students: LanguageElectiveStudent[],
@@ -737,12 +760,13 @@ export async function saveLanguageElectiveRoster(
   const db = getDb();
   if (!db) throw new Error('Firebase 未初始化');
   const id = languageElectiveDocId(academicYear);
+  const { studentsPayload, settingsPayload } = sanitizeLanguageElectivePayload(students, languageClassSettings);
   const payload: Record<string, unknown> = {
     academicYear,
-    students,
+    students: studentsPayload,
     updatedAt: serverTimestamp(),
   };
-  if (languageClassSettings !== undefined) payload.languageClassSettings = languageClassSettings;
+  if (settingsPayload !== undefined) payload.languageClassSettings = settingsPayload;
   await setDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, id), payload, { merge: true });
 }
 
