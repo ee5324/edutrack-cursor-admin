@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Download, Users, ChevronDown, ChevronRight, Save, Loader2, RefreshCw, Search, Plus, Trash2 } from 'lucide-react';
+import { Download, Users, ChevronDown, ChevronRight, Save, Loader2, RefreshCw, Search, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import type { LanguageElectiveStudent, LanguageClassSetting } from '../types';
 import {
   getLanguageElectiveRoster,
@@ -27,10 +27,14 @@ const LanguageElectiveRoster: React.FC = () => {
   const [classFilter, setClassFilter] = useState('');
   /** 選修語言篩選：下拉選單，空白＝全部 */
   const [languageFilter, setLanguageFilter] = useState('');
+  /** 篩選／分區用快照：僅在載入、儲存、新增、刪除時更新，編輯班級／座號／姓名時不變，避免打一字就跳走 */
+  const [filterSnapshot, setFilterSnapshot] = useState<LanguageElectiveStudent[]>([]);
   /** 語言班別設定（僅讀取，供下拉與儲存時帶入；編輯請至「點名單製作」頁） */
   const [languageClassSettings, setLanguageClassSettings] = useState<LanguageClassSetting[]>([]);
   /** 批次設定語言班別時選的班別 */
   const [batchLanguageClass, setBatchLanguageClass] = useState('');
+  /** 所有學年名單（用於跨學年語言選修不同警示） */
+  const [allRosters, setAllRosters] = useState<{ academicYear: string; students: LanguageElectiveStudent[] }[]>([]);
   /** 新增學生表單 */
   const [showAddForm, setShowAddForm] = useState(false);
   const [newClassName, setNewClassName] = useState('');
@@ -41,52 +45,98 @@ const LanguageElectiveRoster: React.FC = () => {
 
   const hasRoster = students.length > 0;
   const classNames = useMemo(
-    () => Array.from(new Set(students.map((s) => s.className))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
-    [students]
+    () => Array.from(new Set((filterSnapshot.length ? filterSnapshot : students).map((s) => s.className))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [filterSnapshot, students]
   );
   const languageClassNames = useMemo(() => languageClassSettings.map((s) => s.name), [languageClassSettings]);
 
-  /** 依搜尋條件篩選，保留原始索引供勾選／編輯 */
+  /** 依搜尋條件篩選（以 filterSnapshot 判斷），顯示用 students[i]，避免編輯時篩選結果變動導致跳走 */
   const filteredWithIndex = useMemo(() => {
+    const snap = filterSnapshot.length === students.length ? filterSnapshot : students;
     const q = searchQuery.trim().toLowerCase();
     if (!q) return students.map((s, i) => ({ s, i }));
     return students
       .map((s, i) => ({ s, i }))
-      .filter(
-        ({ s }) =>
-          s.name.toLowerCase().includes(q) ||
-          s.seat === searchQuery.trim() ||
-          String(s.seat).includes(q)
-      );
-  }, [students, searchQuery]);
+      .filter((_, i) => {
+        const fs = snap[i];
+        if (!fs) return false;
+        return fs.name.toLowerCase().includes(q) || fs.seat === searchQuery.trim() || String(fs.seat).includes(q);
+      });
+  }, [students, filterSnapshot, searchQuery]);
 
-  /** 依班級篩選後再分區 */
+  /** 依班級篩選（以 filterSnapshot 判斷） */
   const filteredByClass = useMemo(() => {
+    const snap = filterSnapshot.length === students.length ? filterSnapshot : students;
     if (!classFilter.trim()) return filteredWithIndex;
-    return filteredWithIndex.filter(({ s }) => s.className === classFilter);
-  }, [filteredWithIndex, classFilter]);
+    return filteredWithIndex.filter(({ i }) => snap[i]?.className === classFilter);
+  }, [filteredWithIndex, classFilter, filterSnapshot, students.length]);
 
-  /** 依選修語言篩選 */
+  /** 依選修語言篩選（以 filterSnapshot 判斷） */
   const filteredByLanguage = useMemo(() => {
+    const snap = filterSnapshot.length === students.length ? filterSnapshot : students;
     if (!languageFilter.trim()) return filteredByClass;
-    return filteredByClass.filter(({ s }) => (s.language ?? '') === languageFilter);
-  }, [filteredByClass, languageFilter]);
+    return filteredByClass.filter(({ i }) => (snap[i]?.language ?? '') === languageFilter);
+  }, [filteredByClass, languageFilter, filterSnapshot, students.length]);
 
-  /** 依班級分區（班級名稱自然排序），每區為 { className, rows: { s, i }[] } */
+  /** 依班級分區（以 filterSnapshot 之班級分區，顯示用 students[i]） */
   const groupedByClass = useMemo(() => {
+    const snap = filterSnapshot.length === students.length ? filterSnapshot : students;
     const map = new Map<string, { s: LanguageElectiveStudent; i: number }[]>();
     for (const { s, i } of filteredByLanguage) {
-      const list = map.get(s.className) ?? [];
+      const key = snap[i]?.className ?? s.className;
+      const list = map.get(key) ?? [];
       list.push({ s, i });
-      map.set(s.className, list);
+      map.set(key, list);
     }
     const names = Array.from(map.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     return names.map((className) => ({
       className,
       rows: (map.get(className) ?? []).sort((a, b) => parseInt(a.s.seat, 10) - parseInt(b.s.seat, 10)),
     }));
-  }, [filteredByLanguage]);
+  }, [filteredByLanguage, filterSnapshot, students.length]);
   const defaultLanguage = languageOptions[0] ?? '無／未選';
+
+  /** 載入所有學年名單（供跨學年語言比對） */
+  useEffect(() => {
+    getAllLanguageElectiveRosters()
+      .then((rosters) => setAllRosters(rosters.map((r) => ({ academicYear: r.academicYear, students: r.students ?? [] }))))
+      .catch(() => setAllRosters([]));
+  }, []);
+
+  /** 是否為「未選」：未選的不納入跨學年不同警示 */
+  const isLanguageUnset = (lang: string) => {
+    const t = (lang ?? '').trim();
+    return t === '' || t === '未選' || t === '無／未選' || t === '無/未選';
+  };
+
+  /** 本學年與他學年選修語言不同的學生（任一方為未選則不警示） */
+  const crossYearLanguageDiffs = useMemo(() => {
+    const otherRosters = allRosters.filter((r) => r.academicYear !== academicYear);
+    if (otherRosters.length === 0) return [];
+    const nameToOtherLangs = new Map<string, { year: string; lang: string }[]>();
+    for (const r of otherRosters) {
+      const key = (s: LanguageElectiveStudent) => (s.name ?? '').trim();
+      for (const s of r.students) {
+        const k = key(s);
+        if (!k) continue;
+        const lang = (s.language ?? '').trim();
+        if (!nameToOtherLangs.has(k)) nameToOtherLangs.set(k, []);
+        const list = nameToOtherLangs.get(k)!;
+        if (!list.some((x) => x.year === r.academicYear)) list.push({ year: r.academicYear, lang });
+      }
+    }
+    const result: { index: number; name: string; currentLang: string; others: { year: string; lang: string }[] }[] = [];
+    students.forEach((s, i) => {
+      const k = (s.name ?? '').trim();
+      const others = nameToOtherLangs.get(k);
+      if (!others?.length) return;
+      const currentLang = (s.language ?? '').trim();
+      if (isLanguageUnset(currentLang)) return;
+      const different = others.filter((o) => !isLanguageUnset(o.lang) && o.lang !== currentLang);
+      if (different.length > 0) result.push({ index: i, name: s.name || k, currentLang, others: different });
+    });
+    return result;
+  }, [allRosters, academicYear, students]);
 
   useEffect(() => {
     if (languageOptions.length && !languageOptions.includes(batchLanguage)) setBatchLanguage(languageOptions[0]);
@@ -97,8 +147,9 @@ const LanguageElectiveRoster: React.FC = () => {
     setError(null);
     try {
       const doc = await getLanguageElectiveRoster(academicYear);
-      if (doc?.students?.length) setStudents(doc.students);
-      else setStudents([]);
+      const list = doc?.students?.length ? doc.students : [];
+      setStudents(list);
+      setFilterSnapshot(list);
       setLanguageClassSettings(doc?.languageClassSettings ?? []);
       setManualEditIndices(new Set());
     } catch (e: any) {
@@ -147,6 +198,7 @@ const LanguageElectiveRoster: React.FC = () => {
 
   const removeStudent = (index: number) => {
     setStudents((prev) => prev.filter((_, i) => i !== index));
+    setFilterSnapshot((prev) => prev.filter((_, i) => i !== index));
     setSelectedIds((prev) => {
       const out = new Set<number>();
       prev.forEach((i) => {
@@ -170,16 +222,15 @@ const LanguageElectiveRoster: React.FC = () => {
     const seat = newSeat.trim();
     const name = newName.trim();
     if (!cn || !seat || !name) return;
-    setStudents((prev) => [
-      ...prev,
-      {
-        className: cn,
-        seat,
-        name,
-        language: newLanguage || defaultLanguage,
-        languageClass: newLanguageClass || undefined,
-      },
-    ]);
+    const newEntry: LanguageElectiveStudent = {
+      className: cn,
+      seat,
+      name,
+      language: newLanguage || defaultLanguage,
+      languageClass: newLanguageClass || undefined,
+    };
+    setStudents((prev) => [...prev, newEntry]);
+    setFilterSnapshot((prev) => [...prev, newEntry]);
     setNewClassName('');
     setNewSeat('');
     setNewName('');
@@ -266,6 +317,7 @@ const LanguageElectiveRoster: React.FC = () => {
       const latestSettings = doc?.languageClassSettings ?? languageClassSettings;
       await saveLanguageElectiveRoster(academicYear, students, latestSettings);
       setLanguageClassSettings(latestSettings);
+      setFilterSnapshot([...students]);
     } catch (e: any) {
       setError(e?.message || '儲存失敗');
     } finally {
@@ -613,8 +665,25 @@ const LanguageElectiveRoster: React.FC = () => {
             </div>
           )}
 
+          {crossYearLanguageDiffs.length > 0 && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">以下學生於其他學年度選修語言與本學年（{academicYear}）不同：</p>
+                <ul className="mt-1 list-disc list-inside space-y-0.5 text-amber-900">
+                  {crossYearLanguageDiffs.map((d) => (
+                    <li key={d.index}>
+                      {d.name} — 本學年：{d.currentLang || '（未選）'}
+                      {d.others.map((o) => `；${o.year} 學年：${o.lang || '（未選）'}`).join('')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           <p className="mb-2 text-sm text-slate-600">
-            以下依班級分區顯示；可編輯班級、座號、姓名、選修語言、語言班別；刪除後請按「儲存至 Firebase」。
+            以下依班級分區顯示；可編輯班級、座號、姓名、選修語言、語言班別。篩選與分區以「儲存前」的資料為準，編輯後按「儲存至 Firebase」才會一併更新。
           </p>
 
           <div className="overflow-x-auto max-h-[520px] overflow-y-auto border border-slate-200 rounded-lg">
@@ -656,7 +725,7 @@ const LanguageElectiveRoster: React.FC = () => {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {rows.map(({ s, i }) => (
-                          <tr key={`${s.className}-${s.seat}-${i}`} className="hover:bg-slate-50">
+                          <tr key={i} className="hover:bg-slate-50">
                             <td className="px-2 py-2 text-center">
                               <input
                                 type="checkbox"
@@ -689,19 +758,33 @@ const LanguageElectiveRoster: React.FC = () => {
                               />
                             </td>
                             <td className="px-3 py-2">
-                              <select
-                                value={s.language}
-                                onChange={(e) => updateStudentLanguage(i, e.target.value)}
-                                className="border rounded px-2 py-1 text-sm w-full max-w-[140px]"
-                              >
-                                {(() => {
-                                  const opts = new Set(languageOptions);
-                                  if (s.language && !opts.has(s.language)) opts.add(s.language);
-                                  return Array.from(opts).map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ));
-                                })()}
-                              </select>
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={s.language}
+                                  onChange={(e) => updateStudentLanguage(i, e.target.value)}
+                                  className="border rounded px-2 py-1 text-sm w-full max-w-[140px]"
+                                >
+                                  {(() => {
+                                    const opts = new Set(languageOptions);
+                                    if (s.language && !opts.has(s.language)) opts.add(s.language);
+                                    return Array.from(opts).map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ));
+                                  })()}
+                                </select>
+                                {crossYearLanguageDiffs.some((d) => d.index === i) && (
+                                  <span
+                                    title={(() => {
+                                      const d = crossYearLanguageDiffs.find((x) => x.index === i);
+                                      if (!d) return '';
+                                      return `他學年選修不同：${d.others.map((o) => `${o.year} 學年 ${o.lang || '（未選）'}`).join('、')}`;
+                                    })()}
+                                    className="text-amber-600 flex-shrink-0"
+                                  >
+                                    <AlertTriangle size={14} />
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3 py-2">
                               <select
