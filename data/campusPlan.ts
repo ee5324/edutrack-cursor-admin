@@ -188,3 +188,22 @@ export const LEGEND_ITEMS = [
   '機車停車位',
   '汽車停車場',
 ];
+
+/** 搜尋班級／教室：回傳符合的建築與樓層 */
+export function searchRoom(keyword: string): { buildingId: string; building: BuildingPlan; floorKey: string; floor: FloorPlan }[] {
+  const q = keyword.trim().toLowerCase();
+  if (!q) return [];
+  const out: { buildingId: string; building: BuildingPlan; floorKey: string; floor: FloorPlan }[] = [];
+  for (const b of BUILDINGS) {
+    for (const f of b.floors) {
+      const floorKey = `${b.id}-${f.floor}`;
+      for (const r of f.rooms) {
+        if (r.name.toLowerCase().includes(q)) {
+          out.push({ buildingId: b.id, building: b, floorKey, floor: f });
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}

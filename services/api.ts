@@ -685,7 +685,7 @@ export async function getLanguageElectiveRoster(academicYear: string): Promise<L
   if (!docSnap.exists()) return null;
   const data = docSnap.data();
   return {
-    academicYear: data.academicYear ?? academicYear,
+    academicYear: String(data.academicYear ?? academicYear),
     semester: data.semester ?? '',
     students: Array.isArray(data.students) ? data.students : [],
     languageClassSettings: Array.isArray(data.languageClassSettings) ? data.languageClassSettings : undefined,
@@ -702,7 +702,7 @@ export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveR
     .map((d) => {
       const data = d.data();
       return {
-        academicYear: data.academicYear ?? d.id,
+        academicYear: String(data.academicYear ?? d.id),
         semester: data.semester ?? '',
         students: Array.isArray(data.students) ? data.students : [],
         languageClassSettings: Array.isArray(data.languageClassSettings) ? data.languageClassSettings : undefined,
@@ -712,12 +712,14 @@ export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveR
     .sort((a, b) => parseInt(b.academicYear, 10) - parseInt(a.academicYear, 10));
 }
 
-/** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆） */
+/** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆）；姓名以 trim 比對。 */
 export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDoc[]): Record<string, string> {
   const nameToLang: Record<string, string> = {};
   for (const r of rosters) {
     for (const s of r.students || []) {
-      if (s.name && s.language) nameToLang[s.name] = s.language;
+      const name = (s.name && String(s.name).trim()) || '';
+      const lang = s.language != null ? String(s.language).trim() : '';
+      if (name) nameToLang[name] = lang;
     }
   }
   return nameToLang;

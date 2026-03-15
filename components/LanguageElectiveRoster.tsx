@@ -25,6 +25,8 @@ const LanguageElectiveRoster: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   /** 班級篩選：下拉選單，空白＝全部 */
   const [classFilter, setClassFilter] = useState('');
+  /** 選修語言篩選：下拉選單，空白＝全部 */
+  const [languageFilter, setLanguageFilter] = useState('');
   /** 語言班別設定（僅讀取，供下拉與儲存時帶入；編輯請至「點名單製作」頁） */
   const [languageClassSettings, setLanguageClassSettings] = useState<LanguageClassSetting[]>([]);
   /** 批次設定語言班別時選的班別 */
@@ -57,10 +59,16 @@ const LanguageElectiveRoster: React.FC = () => {
     return filteredWithIndex.filter(({ s }) => s.className === classFilter);
   }, [filteredWithIndex, classFilter]);
 
+  /** 依選修語言篩選 */
+  const filteredByLanguage = useMemo(() => {
+    if (!languageFilter.trim()) return filteredByClass;
+    return filteredByClass.filter(({ s }) => (s.language ?? '') === languageFilter);
+  }, [filteredByClass, languageFilter]);
+
   /** 依班級分區（班級名稱自然排序），每區為 { className, rows: { s, i }[] } */
   const groupedByClass = useMemo(() => {
     const map = new Map<string, { s: LanguageElectiveStudent; i: number }[]>();
-    for (const { s, i } of filteredByClass) {
+    for (const { s, i } of filteredByLanguage) {
       const list = map.get(s.className) ?? [];
       list.push({ s, i });
       map.set(s.className, list);
@@ -70,7 +78,7 @@ const LanguageElectiveRoster: React.FC = () => {
       className,
       rows: (map.get(className) ?? []).sort((a, b) => parseInt(a.s.seat, 10) - parseInt(b.s.seat, 10)),
     }));
-  }, [filteredByClass]);
+  }, [filteredByLanguage]);
   const defaultLanguage = languageOptions[0] ?? '無／未選';
 
   useEffect(() => {
@@ -152,10 +160,11 @@ const LanguageElectiveRoster: React.FC = () => {
       const prevRoster = allRosters.find((r) => r.academicYear === prevYear);
       const nameToLanguage = prevRoster ? buildNameToLanguageFromRosters([prevRoster]) : {};
       const matched = Object.keys(nameToLanguage).length;
+      const nameKey = (name: string) => (name && String(name).trim()) || '';
       setStudents((prev) =>
         prev.map((s, i) => ({
           ...s,
-          language: manualEditIndices.has(i) ? s.language : (nameToLanguage[s.name] ?? s.language),
+          language: manualEditIndices.has(i) ? s.language : (nameToLanguage[nameKey(s.name)] ?? s.language),
         }))
       );
       if (matched === 0) setError(`${prevYear} 學年無名單可繼承，或姓名皆無對應。`);
@@ -246,6 +255,19 @@ const LanguageElectiveRoster: React.FC = () => {
                   ))}
                 </select>
               </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-slate-700 whitespace-nowrap">選修語言</label>
+                <select
+                  value={languageFilter}
+                  onChange={(e) => setLanguageFilter(e.target.value)}
+                  className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[6rem] focus:ring-2 focus:ring-blue-300"
+                >
+                  <option value="">全部</option>
+                  {languageOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex items-center gap-2 ml-auto">
                 <Search size={16} className="text-slate-500" />
                 <input
@@ -255,8 +277,8 @@ const LanguageElectiveRoster: React.FC = () => {
                   placeholder="搜尋姓名或座號…"
                   className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-56 focus:ring-2 focus:ring-blue-300"
                 />
-                {(searchQuery.trim() || classFilter) && (
-                  <span className="text-xs text-slate-500">符合 {filteredByClass.length} 人</span>
+                {(searchQuery.trim() || classFilter || languageFilter) && (
+                  <span className="text-xs text-slate-500">符合 {filteredByLanguage.length} 人</span>
                 )}
               </div>
             </>
@@ -368,7 +390,7 @@ const LanguageElectiveRoster: React.FC = () => {
           <div className="overflow-x-auto max-h-[520px] overflow-y-auto border border-slate-200 rounded-lg">
             {groupedByClass.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-sm">
-                {searchQuery.trim() ? '無符合條件的學生' : '尚無名單'}
+                {(searchQuery.trim() || classFilter || languageFilter) ? '無符合條件的學生' : '尚無名單'}
               </div>
             ) : (
               <div className="divide-y divide-slate-200">
