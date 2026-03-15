@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map, FileText, ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -19,7 +19,7 @@ interface MenuItemFlat {
   icon: typeof CalendarDays;
   badge?: number;
 }
-/** 巢狀群組：本土語點名單 > 學生名單、學生查詢、點名單製作 */
+/** 巢狀群組：本土語點名單 > 學生查詢、點名單製作（名單來源為頂層「學生名單」） */
 interface MenuItemGroup {
   id: string;
   label: string;
@@ -37,7 +37,6 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
       label: '本土語點名單',
       icon: ClipboardList,
       children: [
-        { id: 'student-roster', label: '學生名單' },
         { id: 'language-elective', label: '學生查詢' },
         { id: 'attendance', label: '點名單製作' },
       ],
@@ -46,6 +45,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
 
   const menuItemsFlat: MenuItemFlat[] = [
     { id: 'calendar', label: '行政行事曆', icon: CalendarDays },
+    { id: 'student-roster', label: '學生名單', icon: Users },
     { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
     { id: 'vendors', label: '廠商管理', icon: Store },
