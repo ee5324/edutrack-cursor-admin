@@ -17,7 +17,8 @@ export function parseRosterFromRows(rows: string[][]): RosterMap {
         const className = String(row[j + 1] ?? '').trim();
         if (!className) continue;
         if (!roster[className]) roster[className] = {};
-        let rowIdx = i + 2;
+        // 學生列從班級列「下一列」開始（常見為標題下一列即第一筆）；若為空白列會因座號不符而略過
+        let rowIdx = i + 1;
         while (rowIdx < rows.length) {
           const targetRow = rows[rowIdx];
           if (!targetRow || targetRow.length <= j) {

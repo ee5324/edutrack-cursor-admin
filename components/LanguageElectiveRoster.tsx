@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Download, Users, ChevronDown, ChevronRight, Save, Loader2, RefreshCw, Search } from 'lucide-react';
+import { Download, Users, ChevronDown, ChevronRight, Save, Loader2, RefreshCw, Search, Plus, Trash2 } from 'lucide-react';
 import type { LanguageElectiveStudent, LanguageClassSetting } from '../types';
 import {
   getLanguageElectiveRoster,
@@ -31,6 +31,13 @@ const LanguageElectiveRoster: React.FC = () => {
   const [languageClassSettings, setLanguageClassSettings] = useState<LanguageClassSetting[]>([]);
   /** 批次設定語言班別時選的班別 */
   const [batchLanguageClass, setBatchLanguageClass] = useState('');
+  /** 新增學生表單 */
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [newSeat, setNewSeat] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newLanguage, setNewLanguage] = useState(() => loadLanguageOptions()[0] ?? '');
+  const [newLanguageClass, setNewLanguageClass] = useState('');
 
   const hasRoster = students.length > 0;
   const classNames = useMemo(
@@ -114,6 +121,73 @@ const LanguageElectiveRoster: React.FC = () => {
     });
   };
 
+  const updateStudentName = (index: number, name: string) => {
+    setStudents((prev) => {
+      const next = [...prev];
+      if (next[index]) next[index] = { ...next[index], name: name.trim() || next[index].name };
+      return next;
+    });
+  };
+
+  const updateStudentSeat = (index: number, seat: string) => {
+    setStudents((prev) => {
+      const next = [...prev];
+      if (next[index]) next[index] = { ...next[index], seat: String(seat).trim() || next[index].seat };
+      return next;
+    });
+  };
+
+  const updateStudentClass = (index: number, className: string) => {
+    setStudents((prev) => {
+      const next = [...prev];
+      if (next[index]) next[index] = { ...next[index], className: className.trim() || next[index].className };
+      return next;
+    });
+  };
+
+  const removeStudent = (index: number) => {
+    setStudents((prev) => prev.filter((_, i) => i !== index));
+    setSelectedIds((prev) => {
+      const out = new Set<number>();
+      prev.forEach((i) => {
+        if (i === index) return;
+        out.add(i > index ? i - 1 : i);
+      });
+      return out;
+    });
+    setManualEditIndices((prev) => {
+      const out = new Set<number>();
+      prev.forEach((i) => {
+        if (i === index) return;
+        out.add(i > index ? i - 1 : i);
+      });
+      return out;
+    });
+  };
+
+  const handleAddStudent = () => {
+    const cn = newClassName.trim();
+    const seat = newSeat.trim();
+    const name = newName.trim();
+    if (!cn || !seat || !name) return;
+    setStudents((prev) => [
+      ...prev,
+      {
+        className: cn,
+        seat,
+        name,
+        language: newLanguage || defaultLanguage,
+        languageClass: newLanguageClass || undefined,
+      },
+    ]);
+    setNewClassName('');
+    setNewSeat('');
+    setNewName('');
+    setNewLanguage(defaultLanguage);
+    setNewLanguageClass('');
+    setShowAddForm(false);
+  };
+
   const updateStudentLanguageClass = (index: number, languageClass: string) => {
     setStudents((prev) => {
       const next = [...prev];
@@ -149,7 +223,12 @@ const LanguageElectiveRoster: React.FC = () => {
     setSelectedIds(new Set());
   };
 
-  /** 依姓名從「上一學年度」繼承選修語言；已手動改過的列不覆蓋 */
+  /** 依姓名從「上一學年度」繼承選修語言：僅當新學年為「無／未選」或未填時才繼承，已有填寫則保留。 */
+  const isUnsetLanguage = (lang: string | undefined) => {
+    const v = (lang ?? '').trim();
+    return v === '' || v === '無／未選' || v === '無/未選';
+  };
+
   const handleInheritLanguages = async () => {
     if (students.length === 0) return;
     setInheriting(true);
@@ -162,9 +241,11 @@ const LanguageElectiveRoster: React.FC = () => {
       const matched = Object.keys(nameToLanguage).length;
       const nameKey = (name: string) => (name && String(name).trim()) || '';
       setStudents((prev) =>
-        prev.map((s, i) => ({
+        prev.map((s) => ({
           ...s,
-          language: manualEditIndices.has(i) ? s.language : (nameToLanguage[nameKey(s.name)] ?? s.language),
+          language: isUnsetLanguage(s.language)
+            ? (nameToLanguage[nameKey(s.name)] ?? s.language)
+            : s.language,
         }))
       );
       if (matched === 0) setError(`${prevYear} 學年無名單可繼承，或姓名皆無對應。`);
@@ -286,6 +367,63 @@ const LanguageElectiveRoster: React.FC = () => {
         </div>
       </div>
 
+      {/* 尚無名單時：可新增第一筆或引導至系統設定匯入 */}
+      {!hasRoster && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <p className="text-slate-600 mb-3">尚無名單。請至「系統設定」匯入 Excel，或在此新增學生：</p>
+          <button
+            type="button"
+            onClick={() => setShowAddForm((v) => !v)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-lg hover:bg-emerald-200 text-sm"
+          >
+            <Plus size={14} />
+            新增學生
+          </button>
+          {showAddForm && (
+            <div className="mt-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
+              <p className="text-sm font-medium text-slate-700 mb-3">新增一筆學生</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">班級</label>
+                  <input type="text" value={newClassName} onChange={(e) => setNewClassName(e.target.value)} placeholder="例：609" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">座號</label>
+                  <input type="text" value={newSeat} onChange={(e) => setNewSeat(e.target.value)} placeholder="例：1" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">姓名</label>
+                  <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="姓名" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">選修語言</label>
+                  <select value={newLanguage} onChange={(e) => setNewLanguage(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[6rem]">
+                    {languageOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">語言班別</label>
+                  <select value={newLanguageClass} onChange={(e) => setNewLanguageClass(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[5rem]">
+                    <option value="">—</option>
+                    {languageClassNames.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <button type="button" onClick={handleAddStudent} disabled={!newClassName.trim() || !newSeat.trim() || !newName.trim()} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">
+                  確認新增
+                </button>
+                <button type="button" onClick={() => setShowAddForm(false)} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-300">
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 名單表格：手動修改 + 批次 */}
       {hasRoster && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -294,6 +432,14 @@ const LanguageElectiveRoster: React.FC = () => {
               {academicYear} 學年名單（{students.length} 人）
             </h2>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddForm((v) => !v)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-lg hover:bg-emerald-200 text-sm"
+              >
+                <Plus size={14} />
+                新增學生
+              </button>
               <button
                 type="button"
                 onClick={downloadJson}
@@ -306,7 +452,7 @@ const LanguageElectiveRoster: React.FC = () => {
                 type="button"
                 onClick={handleInheritLanguages}
                 disabled={inheriting || students.length === 0}
-                title="依姓名從上一學年度帶入選修語言；已手動改過的會保留不覆蓋"
+                title="僅當選修語言為「無／未選」或未填時才從上一學年帶入；已有填寫則保留不覆蓋"
                 className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 text-sm disabled:opacity-50"
               >
                 {inheriting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -383,8 +529,92 @@ const LanguageElectiveRoster: React.FC = () => {
             )}
           </div>
 
+          {showAddForm && (
+            <div className="mb-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50/50">
+              <p className="text-sm font-medium text-slate-700 mb-3">新增一筆學生</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">班級</label>
+                  <input
+                    type="text"
+                    value={newClassName}
+                    onChange={(e) => setNewClassName(e.target.value)}
+                    placeholder="例：609"
+                    className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-24"
+                    list="roster-class-list"
+                  />
+                  <datalist id="roster-class-list">
+                    {classNames.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">座號</label>
+                  <input
+                    type="text"
+                    value={newSeat}
+                    onChange={(e) => setNewSeat(e.target.value)}
+                    placeholder="例：1"
+                    className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">姓名</label>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="姓名"
+                    className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-28"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">選修語言</label>
+                  <select
+                    value={newLanguage}
+                    onChange={(e) => setNewLanguage(e.target.value)}
+                    className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[6rem]"
+                  >
+                    {languageOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-0.5">語言班別</label>
+                  <select
+                    value={newLanguageClass}
+                    onChange={(e) => setNewLanguageClass(e.target.value)}
+                    className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[5rem]"
+                  >
+                    <option value="">—</option>
+                    {languageClassNames.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddStudent}
+                  disabled={!newClassName.trim() || !newSeat.trim() || !newName.trim()}
+                  className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  確認新增
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm(false)}
+                  className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-300"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+
           <p className="mb-2 text-sm text-slate-600">
-            以下依班級分區顯示；<strong>選修語言</strong>為其中一項維度，可在此編輯並儲存。
+            以下依班級分區顯示；可編輯班級、座號、姓名、選修語言、語言班別；刪除後請按「儲存至 Firebase」。
           </p>
 
           <div className="overflow-x-auto max-h-[520px] overflow-y-auto border border-slate-200 rounded-lg">
@@ -416,10 +646,12 @@ const LanguageElectiveRoster: React.FC = () => {
                               }}
                             />
                           </th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">班級</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">座號</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">姓名</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">選修語言</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">語言班別</th>
+                          <th className="px-2 py-2 w-10"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -432,8 +664,30 @@ const LanguageElectiveRoster: React.FC = () => {
                                 onChange={() => toggleSelect(i)}
                               />
                             </td>
-                            <td className="px-3 py-2 text-slate-600">{s.seat}</td>
-                            <td className="px-3 py-2 text-slate-700">{s.name}</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={s.className}
+                                onChange={(e) => updateStudentClass(i, e.target.value)}
+                                className="border border-slate-200 rounded px-2 py-1 text-sm w-20 bg-white"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={s.seat}
+                                onChange={(e) => updateStudentSeat(i, e.target.value)}
+                                className="border border-slate-200 rounded px-2 py-1 text-sm w-14 bg-white"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={s.name}
+                                onChange={(e) => updateStudentName(i, e.target.value)}
+                                className="border border-slate-200 rounded px-2 py-1 text-sm w-24 bg-white"
+                              />
+                            </td>
                             <td className="px-3 py-2">
                               <select
                                 value={s.language}
@@ -463,6 +717,16 @@ const LanguageElectiveRoster: React.FC = () => {
                                   <option value={s.languageClass}>{s.languageClass}</option>
                                 )}
                               </select>
+                            </td>
+                            <td className="px-2 py-2">
+                              <button
+                                type="button"
+                                onClick={() => removeStudent(i)}
+                                className="text-slate-400 hover:text-red-600 p-1"
+                                title="刪除此筆"
+                              >
+                                <Trash2 size={14} />
+                              </button>
                             </td>
                           </tr>
                         ))}

@@ -143,8 +143,31 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
                 const list = rosterMapToStudents(roster, nameToLanguage, defaultLang);
                 const doc = await getLanguageElectiveRoster(uploadYear);
                 const languageClassSettings = doc?.languageClassSettings ?? [];
-                await saveLanguageElectiveRoster(uploadYear, list, languageClassSettings);
-                setUploadSuccess(`已匯入 ${list.length} 人（${classCount} 班）至 ${uploadYear} 學年名單。`);
+                const currentStudents = doc?.students ?? [];
+                const currentMap = new Map<string, (typeof currentStudents)[0]>();
+                for (const s of currentStudents) {
+                    currentMap.set(`${s.className}-${s.seat}`, s);
+                }
+                const merged: (typeof list) = [];
+                let added = 0;
+                for (const s of list) {
+                    const key = `${s.className}-${s.seat}`;
+                    const existing = currentMap.get(key);
+                    if (existing) {
+                        merged.push(existing);
+                        currentMap.delete(key);
+                    } else {
+                        merged.push(s);
+                        added++;
+                    }
+                }
+                for (const s of currentMap.values()) merged.push(s);
+                await saveLanguageElectiveRoster(uploadYear, merged, languageClassSettings);
+                setUploadSuccess(
+                    currentStudents.length === 0
+                        ? `已匯入 ${merged.length} 人（${classCount} 班）至 ${uploadYear} 學年名單。`
+                        : `已合併：保留 ${merged.length - added} 筆既有資料、新增 ${added} 人；共 ${merged.length} 人（${uploadYear} 學年）。`
+                );
             } catch (err: any) {
                 setUploadError(err?.message || '解析或儲存失敗');
             } finally {
@@ -371,7 +394,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
                     <div>
                         <h3 className="text-lg font-semibold text-gray-900">學生名單 Excel 上傳</h3>
                         <p className="text-gray-500 text-sm mt-1">
-                            每年約一次，上傳 Excel 或 CSV 班級名單可建立或覆寫該學年核心名單；會依「姓名」繼承上一學年選修語言。完成後請至「學生名單」頁編輯選修語言與語言班別。
+                            上傳 Excel 或 CSV 班級名單會與該學年現有名單<strong>合併</strong>：同班級＋同座號的學生保留既有編輯（選修語言、語言班別），僅補上 Excel 有而名單沒有的學生；名單有但 Excel 沒有的學生也會保留。新學生會依「姓名」繼承上一學年選修語言。完成後請至「學生名單」頁檢視或編輯。
                         </p>
                     </div>
                 </div>
@@ -409,7 +432,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
                                 <ul className="list-disc pl-5 space-y-1">
                                     <li>表頭：某一儲存格同時包含「班」與「級」，其<strong>右側一格</strong>為班級名稱。</li>
                                     <li>座號：班級欄的<strong>左邊第 2 欄</strong>；姓名：<strong>左邊第 1 欄</strong>。</li>
-                                    <li>學生列：從班級列起<strong>下方第 2 列</strong>開始；座號為數字、姓名有內容才列入。</li>
+                                    <li>學生列：從班級列起<strong>下一列</strong>開始（標題下一列即第一筆）；座號為數字、姓名有內容才列入。</li>
                                     <li>區塊結束：座號欄出現「合計」或「男」即結束該班。</li>
                                 </ul>
                                 <p className="text-gray-500">支援 .csv、.xlsx、.xls；CSV 請用 UTF-8。</p>
