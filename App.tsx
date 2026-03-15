@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import AllowedUsersManager from './components/AllowedUsersManager';
-import AttendanceGenerator from './AttendanceGenerator';
 import LanguageElectiveRoster from './components/LanguageElectiveRoster';
 import TodoCalendar from './components/TodoCalendar';
 import CampusMap from './components/CampusMap';
@@ -321,10 +320,12 @@ const App: React.FC = () => {
     switch (activeTab) {
       case 'calendar':
         return <TodoCalendar />;
-      case 'attendance':
-        return <AttendanceGenerator />;
+      case 'student-roster':
+        return <LanguageElectiveRoster defaultView="roster" pageMode="roster" />;
       case 'language-elective':
-        return <LanguageElectiveRoster />;
+        return <LanguageElectiveRoster defaultView="roster" pageMode="query" />;
+      case 'attendance':
+        return <LanguageElectiveRoster defaultView="sheets" pageMode="sheets" />;
       case 'campus-map':
         return <CampusMap />;
       case 'awards':

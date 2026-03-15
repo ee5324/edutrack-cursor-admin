@@ -23,6 +23,18 @@ export interface LanguageElectiveStudent {
   seat: string;
   name: string;
   language: string;
+  /** 語言班別（對應語言班別設定之名稱） */
+  languageClass?: string;
+}
+
+/** 語言班別設定：教室、時間、教師（每學年一組） */
+export interface LanguageClassSetting {
+  id: string;
+  /** 班別名稱（如 閩南語A、客家語B） */
+  name: string;
+  classroom?: string;
+  time?: string;
+  teacher?: string;
 }
 
 /** 某學年語言選修名單（Firestore 一 doc 一學年，不分上下學期） */
@@ -30,6 +42,8 @@ export interface LanguageElectiveRosterDoc {
   academicYear: string;
   semester?: string; // 選填，相容舊資料；新資料以學年計可不填
   students: LanguageElectiveStudent[];
+  /** 語言班別設定：教室、時間、教師 */
+  languageClassSettings?: LanguageClassSetting[];
   updatedAt?: string;
 }
 

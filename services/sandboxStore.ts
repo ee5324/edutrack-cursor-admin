@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting } from '../types';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -342,10 +342,15 @@ export function sandboxGetAllLanguageElectiveRosters(): Promise<LanguageElective
   return Promise.resolve(Object.values(store.languageElective));
 }
 
-export function sandboxSaveLanguageElectiveRoster(academicYear: string, students: { className: string; seat: string; name: string; language: string }[]): Promise<void> {
+export function sandboxSaveLanguageElectiveRoster(
+  academicYear: string,
+  students: { className: string; seat: string; name: string; language: string; languageClass?: string }[],
+  languageClassSettings?: LanguageClassSetting[]
+): Promise<void> {
   store.languageElective[academicYear] = {
     academicYear,
     students,
+    languageClassSettings,
     updatedAt: new Date().toISOString(),
   };
   return Promise.resolve();

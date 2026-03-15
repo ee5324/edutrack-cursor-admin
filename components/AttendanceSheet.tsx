@@ -24,34 +24,39 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
     return `${mm}/${dd}`;
   };
 
-  // 預先處理學生資料，計算背景色與合併儲存格 (rowSpan)
-  // 邏輯：當節次(period)改變時，群組索引+1，奇數群組為灰色
+  // 正規化節次為字串，確保同一時段能正確分組
+  const normalizedStudents = students.map((s) => ({
+    ...s,
+    period: s.period != null ? String(s.period).trim() || '第一節' : '第一節',
+  }));
+
+  // 預先處理學生資料：同一時段(period)合併為同一儲存格 (rowSpan)，並計算背景色
+  // 邏輯：相鄰且節次相同的列只渲染一個「上課時間」儲存格，並設 rowSpan
   let groupIndex = 0;
-  let lastPeriod = students[0]?.period;
-  
-  // 計算每個節次的出現次數，用於 rowSpan
+  let lastPeriod = normalizedStudents[0]?.period ?? '';
+
   const periodCounts: { [key: string]: number } = {};
-  students.forEach(s => {
-    periodCounts[s.period] = (periodCounts[s.period] || 0) + 1;
+  normalizedStudents.forEach((s) => {
+    const p = s.period;
+    periodCounts[p] = (periodCounts[p] || 0) + 1;
   });
 
-  // 追蹤每個節次已經渲染了幾次，只有第一次渲染時帶上 rowSpan
   const periodRendered: { [key: string]: number } = {};
 
-  const processedStudents = students.map((s) => {
+  const processedStudents = normalizedStudents.map((s) => {
     if (s.period !== lastPeriod) {
       groupIndex++;
       lastPeriod = s.period;
     }
-    
     const count = periodRendered[s.period] || 0;
     const isFirst = count === 0;
     periodRendered[s.period] = count + 1;
 
-    return { 
-      ...s, 
+    return {
+      ...s,
       isGray: groupIndex % 2 !== 0,
-      rowSpan: isFirst ? periodCounts[s.period] : 0
+      /** 同一時段第一列為合併格數，其餘為 0（不輸出該 td） */
+      rowSpan: isFirst ? periodCounts[s.period] : 0,
     };
   });
 
@@ -132,7 +137,11 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
                 >
                     <td className={borderStyle}>{student.id}</td>
                     {student.rowSpan > 0 && (
-                        <td className={borderStyle} rowSpan={student.rowSpan}>
+                        <td
+                            className={borderStyle}
+                            rowSpan={student.rowSpan}
+                            style={{ verticalAlign: 'middle' }}
+                        >
                             {student.period}
                         </td>
                     )}

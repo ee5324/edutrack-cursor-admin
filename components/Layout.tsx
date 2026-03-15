@@ -19,7 +19,7 @@ interface MenuItemFlat {
   icon: typeof CalendarDays;
   badge?: number;
 }
-/** 巢狀群組：本土語點名單 > 點名單製作、學生語言選修登錄 */
+/** 巢狀群組：本土語點名單 > 學生名單、學生查詢、點名單製作 */
 interface MenuItemGroup {
   id: string;
   label: string;
@@ -37,8 +37,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
       label: '本土語點名單',
       icon: ClipboardList,
       children: [
+        { id: 'student-roster', label: '學生名單' },
+        { id: 'language-elective', label: '學生查詢' },
         { id: 'attendance', label: '點名單製作' },
-        { id: 'language-elective', label: '學生語言選修登錄' },
       ],
     },
   ];

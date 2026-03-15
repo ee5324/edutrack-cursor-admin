@@ -20,7 +20,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -688,6 +688,7 @@ export async function getLanguageElectiveRoster(academicYear: string): Promise<L
     academicYear: data.academicYear ?? academicYear,
     semester: data.semester ?? '',
     students: Array.isArray(data.students) ? data.students : [],
+    languageClassSettings: Array.isArray(data.languageClassSettings) ? data.languageClassSettings : undefined,
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
   };
 }
@@ -704,6 +705,7 @@ export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveR
         academicYear: data.academicYear ?? d.id,
         semester: data.semester ?? '',
         students: Array.isArray(data.students) ? data.students : [],
+        languageClassSettings: Array.isArray(data.languageClassSettings) ? data.languageClassSettings : undefined,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
       };
     })
@@ -721,23 +723,25 @@ export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDo
   return nameToLang;
 }
 
-export async function saveLanguageElectiveRoster(academicYear: string, students: LanguageElectiveStudent[]): Promise<void> {
+export async function saveLanguageElectiveRoster(
+  academicYear: string,
+  students: LanguageElectiveStudent[],
+  languageClassSettings?: LanguageClassSetting[]
+): Promise<void> {
   if (isSandbox()) {
-    await sandboxSaveLanguageElectiveRoster(academicYear, students);
+    await sandboxSaveLanguageElectiveRoster(academicYear, students, languageClassSettings);
     return;
   }
   const db = getDb();
   if (!db) throw new Error('Firebase 未初始化');
   const id = languageElectiveDocId(academicYear);
-  await setDoc(
-    doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, id),
-    {
-      academicYear,
-      students,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  const payload: Record<string, unknown> = {
+    academicYear,
+    students,
+    updatedAt: serverTimestamp(),
+  };
+  if (languageClassSettings !== undefined) payload.languageClassSettings = languageClassSettings;
+  await setDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, id), payload, { merge: true });
 }
 
 // --- Setup (GAS：檢查 Drive 等；Sandbox 時回傳說明) ---

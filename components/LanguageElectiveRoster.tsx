@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, FileSpreadsheet, HelpCircle, Download, Users, ChevronDown, ChevronRight, Save, Loader2, Plus, Trash2, Settings2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Upload, FileSpreadsheet, HelpCircle, Download, Users, ChevronDown, ChevronRight, Save, Loader2, Plus, Trash2, Settings2, RefreshCw, Search, BookOpen, Calendar as CalendarIcon, Printer, X, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import type { LanguageElectiveStudent } from '../types';
+import type { LanguageElectiveStudent, LanguageClassSetting, AttendanceTableData, Student } from '../types';
+import AttendanceSheet from './AttendanceSheet';
 import {
   getLanguageElectiveRoster,
   getAllLanguageElectiveRosters,
@@ -72,6 +73,7 @@ function rosterMapToStudents(roster: RosterMap, nameToLanguage: Record<string, s
         seat,
         name,
         language: nameToLanguage[name] ?? defaultLanguage,
+        languageClass: undefined,
       });
     }
   }
@@ -83,7 +85,15 @@ function sheetToRows(sheet: XLSX.WorkSheet): string[][] {
   return aoa.map((row) => row.map((c) => (c != null ? String(c).trim() : '')));
 }
 
-const LanguageElectiveRoster: React.FC = () => {
+interface LanguageElectiveRosterProps {
+  /** 預設檢視：名單編輯（學生名單）或點名單預覽（點名單製作） */
+  defaultView?: 'roster' | 'sheets';
+  /** 頁面模式：核心名單／查詢／點名單預覽，用於標題與說明 */
+  pageMode?: 'roster' | 'query' | 'sheets';
+}
+
+const LanguageElectiveRoster: React.FC<LanguageElectiveRosterProps> = ({ defaultView = 'roster', pageMode: pageModeProp }) => {
+  const pageMode = pageModeProp ?? (defaultView === 'sheets' ? 'sheets' : 'roster');
   const [academicYear, setAcademicYear] = useState('114');
   const [students, setStudents] = useState<LanguageElectiveStudent[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -97,8 +107,58 @@ const LanguageElectiveRoster: React.FC = () => {
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [languageOptionsOpen, setLanguageOptionsOpen] = useState(false);
   const [newLanguageInput, setNewLanguageInput] = useState('');
+  const [inheriting, setInheriting] = useState(false);
+  /** 本 session 內手動改過選修語言的列索引，繼承時不覆蓋 */
+  const [manualEditIndices, setManualEditIndices] = useState<Set<number>>(new Set());
+  /** 搜尋：姓名或座號（空白則顯示全部） */
+  const [searchQuery, setSearchQuery] = useState('');
+  /** 語言班別設定：教室、時間、教師（與名單一併儲存） */
+  const [languageClassSettings, setLanguageClassSettings] = useState<LanguageClassSetting[]>([]);
+  const [languageClassSettingsOpen, setLanguageClassSettingsOpen] = useState(false);
+  /** 批次設定語言班別時選的班別 */
+  const [batchLanguageClass, setBatchLanguageClass] = useState('');
+  /** 點名單：學期、日期（與點名單製作相同邏輯） */
+  const [semester, setSemester] = useState('下學期');
+  const [dates, setDates] = useState<Date[]>([]);
+  const [dateInput, setDateInput] = useState('');
+  const [genStartDate, setGenStartDate] = useState('');
+  const [genEndDate, setGenEndDate] = useState('');
+  const [genDayOfWeek, setGenDayOfWeek] = useState('1');
+  /** 檢視模式：名單編輯 | 點名單預覽 */
+  const [activeView, setActiveView] = useState<'roster' | 'sheets'>(defaultView);
+  const [datesSettingOpen, setDatesSettingOpen] = useState(false);
 
   const hasRoster = students.length > 0;
+  const languageClassNames = useMemo(() => languageClassSettings.map((s) => s.name), [languageClassSettings]);
+
+  /** 依搜尋條件篩選，保留原始索引供勾選／編輯 */
+  const filteredWithIndex = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return students.map((s, i) => ({ s, i }));
+    return students
+      .map((s, i) => ({ s, i }))
+      .filter(
+        ({ s }) =>
+          s.name.toLowerCase().includes(q) ||
+          s.seat === searchQuery.trim() ||
+          String(s.seat).includes(q)
+      );
+  }, [students, searchQuery]);
+
+  /** 依班級分區（班級名稱自然排序），每區為 { className, rows: { s, i }[] } */
+  const groupedByClass = useMemo(() => {
+    const map = new Map<string, { s: LanguageElectiveStudent; i: number }[]>();
+    for (const { s, i } of filteredWithIndex) {
+      const list = map.get(s.className) ?? [];
+      list.push({ s, i });
+      map.set(s.className, list);
+    }
+    const classNames = Array.from(map.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return classNames.map((className) => ({
+      className,
+      rows: (map.get(className) ?? []).sort((a, b) => parseInt(a.s.seat, 10) - parseInt(b.s.seat, 10)),
+    }));
+  }, [filteredWithIndex]);
   const defaultLanguage = languageOptions[0] ?? '無／未選';
 
   const addLanguageOption = () => {
@@ -129,6 +189,8 @@ const LanguageElectiveRoster: React.FC = () => {
       const doc = await getLanguageElectiveRoster(academicYear);
       if (doc?.students?.length) setStudents(doc.students);
       else setStudents([]);
+      setLanguageClassSettings(doc?.languageClassSettings ?? []);
+      setManualEditIndices(new Set());
     } catch (e: any) {
       setError(e?.message || '載入失敗');
     } finally {
@@ -172,11 +234,14 @@ const LanguageElectiveRoster: React.FC = () => {
           return;
         }
 
+        const prevYear = String(parseInt(academicYear, 10) - 1);
         const allRosters = await getAllLanguageElectiveRosters();
-        const nameToLanguage = buildNameToLanguageFromRosters(allRosters);
+        const prevRoster = allRosters.find((r) => r.academicYear === prevYear);
+        const nameToLanguage = prevRoster ? buildNameToLanguageFromRosters([prevRoster]) : {};
         const defaultLang = languageOptions[0] ?? '無／未選';
         const list = rosterMapToStudents(roster, nameToLanguage, defaultLang);
         setStudents(list);
+        setManualEditIndices(new Set());
         setSelectedIds(new Set());
       } catch (err: any) {
         setError(err?.message || '解析失敗');
@@ -189,12 +254,104 @@ const LanguageElectiveRoster: React.FC = () => {
   };
 
   const updateStudentLanguage = (index: number, language: string) => {
+    setManualEditIndices((prev) => new Set(prev).add(index));
     setStudents((prev) => {
       const next = [...prev];
       if (next[index]) next[index] = { ...next[index], language };
       return next;
     });
   };
+
+  const updateStudentLanguageClass = (index: number, languageClass: string) => {
+    setStudents((prev) => {
+      const next = [...prev];
+      if (next[index]) next[index] = { ...next[index], languageClass: languageClass || undefined };
+      return next;
+    });
+  };
+
+  const addLanguageClassSetting = () => {
+    setLanguageClassSettings((prev) => [
+      ...prev,
+      { id: `lc-${Date.now()}-${Math.random().toString(36).slice(2)}`, name: '', classroom: '', time: '', teacher: '' },
+    ]);
+  };
+
+  const updateLanguageClassSetting = (id: string, field: keyof LanguageClassSetting, value: string) => {
+    setLanguageClassSettings((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const removeLanguageClassSetting = (id: string) => {
+    setLanguageClassSettings((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  const handleAddDate = () => {
+    if (dateInput) {
+      const d = new Date(dateInput);
+      if (!isNaN(d.getTime())) {
+        setDates((prev) => [...prev, d].sort((a, b) => a.getTime() - b.getTime()));
+        setDateInput('');
+      }
+    }
+  };
+
+  const handleRemoveDate = (index: number) => {
+    setDates((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleGenerateDates = () => {
+    if (!genStartDate || !genEndDate) return;
+    const start = new Date(genStartDate);
+    const end = new Date(genEndDate);
+    const targetDay = parseInt(genDayOfWeek, 10);
+    const newDates: Date[] = [];
+    let current = new Date(start);
+    while (current <= end) {
+      if (current.getDay() === targetDay) newDates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    setDates((prev) => {
+      const combined = [...prev, ...newDates];
+      const unique = Array.from(new Set(combined.map((d) => d.getTime()))).map((t) => new Date(t));
+      return unique.sort((a, b) => a.getTime() - b.getTime());
+    });
+  };
+
+  /** 依語言班別產生點名單資料（格式與點名單製作相同） */
+  const sheetDataList = useMemo((): AttendanceTableData[] => {
+    const list: AttendanceTableData[] = [];
+    const defaultPeriod = '第一節';
+    for (const setting of languageClassSettings) {
+      const name = setting.name?.trim();
+      if (!name) continue;
+      const rosterStudents = students
+        .filter((s) => (s.languageClass ?? '').trim() === name)
+        .sort((a, b) => {
+          const c = a.className.localeCompare(b.className, undefined, { numeric: true });
+          return c !== 0 ? c : parseInt(a.seat, 10) - parseInt(b.seat, 10);
+        });
+      if (rosterStudents.length === 0) continue;
+      const sheetStudents: Student[] = rosterStudents.map((s, i) => ({
+        id: String(i + 1),
+        period: defaultPeriod,
+        className: s.className,
+        name: s.name,
+      }));
+      list.push({
+        academicYear,
+        semester: semester.includes('學期') ? semester : `${semester}學期`,
+        courseName: name,
+        instructorName: setting.teacher ?? '',
+        classTime: setting.time ?? '',
+        location: setting.classroom ?? '',
+        dates,
+        students: sheetStudents,
+      });
+    }
+    return list;
+  }, [academicYear, semester, languageClassSettings, students, dates]);
 
   const toggleSelect = (index: number) => {
     setSelectedIds((prev) => {
@@ -212,10 +369,41 @@ const LanguageElectiveRoster: React.FC = () => {
 
   const applyBatchLanguage = () => {
     if (selectedIds.size === 0) return;
+    setManualEditIndices((prev) => {
+      const next = new Set(prev);
+      selectedIds.forEach((i) => next.add(i));
+      return next;
+    });
     setStudents((prev) =>
       prev.map((s, i) => (selectedIds.has(i) ? { ...s, language: batchLanguage } : s))
     );
     setSelectedIds(new Set());
+  };
+
+  /** 依姓名從「上一學年度」繼承選修語言；已手動改過的列不覆蓋 */
+  const handleInheritLanguages = async () => {
+    if (students.length === 0) return;
+    setInheriting(true);
+    setError(null);
+    try {
+      const prevYear = String(parseInt(academicYear, 10) - 1);
+      const allRosters = await getAllLanguageElectiveRosters();
+      const prevRoster = allRosters.find((r) => r.academicYear === prevYear);
+      const nameToLanguage = prevRoster ? buildNameToLanguageFromRosters([prevRoster]) : {};
+      const matched = Object.keys(nameToLanguage).length;
+      setStudents((prev) =>
+        prev.map((s, i) => ({
+          ...s,
+          language: manualEditIndices.has(i) ? s.language : (nameToLanguage[s.name] ?? s.language),
+        }))
+      );
+      if (matched === 0) setError(`${prevYear} 學年無名單可繼承，或姓名皆無對應。`);
+      else setError(null);
+    } catch (e: any) {
+      setError(e?.message || '繼承失敗');
+    } finally {
+      setInheriting(false);
+    }
   };
 
   const handleSave = async () => {
@@ -223,7 +411,7 @@ const LanguageElectiveRoster: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      await saveLanguageElectiveRoster(academicYear, students);
+      await saveLanguageElectiveRoster(academicYear, students, languageClassSettings);
     } catch (e: any) {
       setError(e?.message || '儲存失敗');
     } finally {
@@ -249,38 +437,114 @@ const LanguageElectiveRoster: React.FC = () => {
     <div className="max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <Users className="text-blue-600" />
-          學生語言選修登錄
+          {pageMode === 'roster' ? <Users className="text-blue-600" /> : pageMode === 'sheets' ? <FileText className="text-blue-600" /> : <Search className="text-blue-600" />}
+          {pageMode === 'roster' ? '學生名單' : pageMode === 'sheets' ? '點名單製作' : '學生查詢'}
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          上傳 Excel 班級名單後，可依姓名繼承過往學年選修語言、手動修改或批次調整，並儲存至 Firebase。（以學年計，不分上下學期）
+          {pageMode === 'roster' && (
+            <>核心名單：在此建置學年名單、選修語言與語言班別並儲存，建置成功後即可於「點名單製作」快速渲染點名單、於「頒獎通知」從名單拖曳加入受獎學生。</>
+          )}
+          {pageMode === 'query' && (
+            <>依學年載入名單後可搜尋學生（姓名或座號），依班級分區檢視；選修語言為其中一項維度，可在此檢視或編輯並儲存。</>
+          )}
+          {pageMode === 'sheets' && (
+            <>依語言班別渲染點名單，教室／時間／教師由學生名單之語言班別設定帶入。名單與班別請先於「學生名單」建置。</>
+          )}
         </p>
       </div>
 
-      {/* 學年度 + 載入已儲存（以學年計，不分上下學期） */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-slate-700">學年度</label>
-          <input
-            type="text"
-            value={academicYear}
-            onChange={(e) => setAcademicYear(e.target.value)}
-            className="w-20 border rounded px-2 py-1.5 text-sm"
-            placeholder="114"
-          />
+      {/* 查詢區：學年、學期 + 載入名單 + 搜尋 + 快速渲染 */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-slate-700">學年度</label>
+            <input
+              type="text"
+              value={academicYear}
+              onChange={(e) => setAcademicYear(e.target.value)}
+              className="w-20 border rounded px-2 py-1.5 text-sm"
+              placeholder="114"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-slate-700">學期</label>
+            <select value={semester} onChange={(e) => setSemester(e.target.value)} className="border rounded px-2 py-1.5 text-sm">
+              <option value="上學期">上學期</option>
+              <option value="下學期">下學期</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={loadSavedRoster}
+            disabled={loadingRoster}
+            className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 disabled:opacity-50 flex items-center gap-1"
+          >
+            {loadingRoster ? <Loader2 size={14} className="animate-spin" /> : null}
+            載入名單
+          </button>
+          {hasRoster && (
+            <div className="flex items-center gap-2 ml-auto">
+              <Search size={16} className="text-slate-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜尋姓名或座號…"
+                className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-56 focus:ring-2 focus:ring-blue-300"
+              />
+              {searchQuery.trim() && (
+                <span className="text-xs text-slate-500">符合 {filteredWithIndex.length} 人</span>
+              )}
+            </div>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={loadSavedRoster}
-          disabled={loadingRoster}
-          className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 disabled:opacity-50 flex items-center gap-1"
-        >
-          {loadingRoster ? <Loader2 size={14} className="animate-spin" /> : null}
-          載入已儲存名單
-        </button>
+        {hasRoster && sheetDataList.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setActiveView(activeView === 'roster' ? 'sheets' : 'roster')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700"
+            >
+              <FileText size={16} />
+              {activeView === 'roster' ? '快速渲染點名單' : '返回名單編輯'}
+            </button>
+            {activeView === 'sheets' && (
+              <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 text-white text-sm hover:bg-slate-800 no-print">
+                <Printer size={16} /> 列印全部
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* 管理語言類別（自訂，存於瀏覽器） */}
+      {/* 點名單預覽（快速渲染：依語言班別，格式與點名單製作相同） */}
+      {activeView === 'sheets' && (
+        <div className="space-y-6 pb-20">
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex justify-between items-center no-print">
+            <div className="text-sm text-blue-800">
+              <strong>點名單預覽</strong> — 依語言班別共 {sheetDataList.length} 張，教室／時間／教師已從語言班別設定帶入。
+            </div>
+            <button type="button" onClick={() => window.print()} className="flex items-center bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900">
+              <Printer size={18} className="mr-2" /> 列印
+            </button>
+          </div>
+          {sheetDataList.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 p-6 rounded-lg text-amber-800 text-sm">
+              <p className="font-medium mb-1">尚無可渲染的點名單。</p>
+              <p>請先至「<strong>學生名單</strong>」建立名單、設定語言班別（教室／時間／教師）與點名單日期，再回到「點名單製作」或於學生名單頁點「快速渲染點名單」。</p>
+            </div>
+          )}
+          {sheetDataList.map((data, idx) => (
+            <div key={idx} className="break-before-page">
+              <AttendanceSheet data={data} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeView === 'roster' && (
+        <>
+      {/* 進階：管理語言類別（選修語言維度之選項） */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <button
           type="button"
@@ -289,7 +553,7 @@ const LanguageElectiveRoster: React.FC = () => {
         >
           <span className="font-semibold text-slate-800 flex items-center gap-2">
             <Settings2 size={18} />
-            管理語言類別
+            管理語言類別（選修語言維度）
           </span>
           {languageOptionsOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
         </button>
@@ -337,7 +601,160 @@ const LanguageElectiveRoster: React.FC = () => {
         )}
       </div>
 
-      {/* Excel 格式說明（可收合） */}
+      {/* 語言班別設定：教室、時間、教師（與名單一併儲存） */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setLanguageClassSettingsOpen(!languageClassSettingsOpen)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-left"
+        >
+          <span className="font-semibold text-slate-800 flex items-center gap-2">
+            <BookOpen size={18} />
+            語言班別設定（教室、時間、教師）
+          </span>
+          {languageClassSettingsOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </button>
+        {languageClassSettingsOpen && (
+          <div className="p-4 pt-0 space-y-3">
+            <p className="text-sm text-slate-600">
+              新增班別名稱後，學生名單中可選擇「語言班別」；此處可記錄各班別的教室、上課時間、授課教師，與名單一併儲存。
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border border-slate-200 rounded-lg">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">班別名稱</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">教室</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">時間</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-700">教師</th>
+                    <th className="px-2 py-2 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {languageClassSettings.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={(e) => updateLanguageClassSetting(row.id, 'name', e.target.value)}
+                          placeholder="例：閩南語A"
+                          className="border rounded px-2 py-1 w-full max-w-[120px]"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.classroom ?? ''}
+                          onChange={(e) => updateLanguageClassSetting(row.id, 'classroom', e.target.value)}
+                          placeholder="教室"
+                          className="border rounded px-2 py-1 w-full max-w-[100px]"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.time ?? ''}
+                          onChange={(e) => updateLanguageClassSetting(row.id, 'time', e.target.value)}
+                          placeholder="例：週一 08:00"
+                          className="border rounded px-2 py-1 w-full max-w-[120px]"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.teacher ?? ''}
+                          onChange={(e) => updateLanguageClassSetting(row.id, 'teacher', e.target.value)}
+                          placeholder="教師"
+                          className="border rounded px-2 py-1 w-full max-w-[100px]"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeLanguageClassSetting(row.id)}
+                          className="text-slate-400 hover:text-red-600"
+                          title="刪除此班別"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              onClick={addLanguageClassSetting}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-200 text-slate-700 text-sm hover:bg-slate-300"
+            >
+              <Plus size={14} /> 新增班別
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 點名單日期設定（與點名單製作相同邏輯） */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setDatesSettingOpen(!datesSettingOpen)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 text-left"
+        >
+          <span className="font-semibold text-slate-800 flex items-center gap-2">
+            <CalendarIcon size={18} />
+            點名單日期設定
+          </span>
+          {datesSettingOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </button>
+        {datesSettingOpen && (
+          <div className="p-4 pt-0 space-y-3">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-bold text-blue-800 text-sm mb-2">批次生成（每週固定）</h4>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <input type="date" value={genStartDate} onChange={(e) => setGenStartDate(e.target.value)} className="border rounded p-1 text-sm" />
+                <input type="date" value={genEndDate} onChange={(e) => setGenEndDate(e.target.value)} className="border rounded p-1 text-sm" />
+                <select value={genDayOfWeek} onChange={(e) => setGenDayOfWeek(e.target.value)} className="border rounded p-1 text-sm">
+                  <option value="1">週一</option>
+                  <option value="2">週二</option>
+                  <option value="3">週三</option>
+                  <option value="4">週四</option>
+                  <option value="5">週五</option>
+                  <option value="6">週六</option>
+                  <option value="0">週日</option>
+                </select>
+              </div>
+              <button type="button" onClick={handleGenerateDates} className="w-full bg-blue-600 text-white py-1.5 rounded text-sm hover:bg-blue-700">
+                生成日期
+              </button>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1">手動加入日期</label>
+              <div className="flex gap-2">
+                <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} className="flex-1 border rounded p-2 text-sm" />
+                <button type="button" onClick={handleAddDate} className="bg-slate-700 text-white px-4 rounded text-sm hover:bg-slate-800">加入</button>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-700 mb-2">已選日期（{dates.length}）</p>
+              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                {dates.map((d, i) => (
+                  <span key={i} className="bg-slate-100 border border-slate-300 px-2 py-1 rounded text-sm flex items-center">
+                    {d.toLocaleDateString('zh-TW')}
+                    <button type="button" onClick={() => handleRemoveDate(i)} className="ml-2 text-slate-400 hover:text-red-500">
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {dates.length === 0 && <span className="text-slate-400 text-sm">尚未設定日期</span>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 進階：名單來源與格式說明（可收合） */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <button
           type="button"
@@ -346,7 +763,7 @@ const LanguageElectiveRoster: React.FC = () => {
         >
           <span className="font-semibold text-slate-800 flex items-center gap-2">
             <HelpCircle size={18} />
-            Excel / CSV 檔案格式說明
+            名單來源與 Excel / CSV 格式說明
           </span>
           {formatOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
         </button>
@@ -402,11 +819,11 @@ const LanguageElectiveRoster: React.FC = () => {
         )}
       </div>
 
-      {/* 上傳 Excel */}
+      {/* 名單來源：上傳 Excel（建立/更新查詢名單） */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors">
           <Upload className="w-9 h-9 text-slate-400 mb-2" />
-          <span className="text-sm font-medium text-slate-600">上傳 Excel 或 CSV 班級名單（會依姓名繼承選修語言）</span>
+          <span className="text-sm font-medium text-slate-600">上傳 Excel 或 CSV 班級名單（建立或更新核心名單，會依姓名繼承選修語言）</span>
           <span className="text-xs text-slate-400 mt-1">.csv / .xlsx / .xls</span>
           <input type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={handleFile} />
         </label>
@@ -419,7 +836,7 @@ const LanguageElectiveRoster: React.FC = () => {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
             <h2 className="text-lg font-semibold text-slate-800">
-              {academicYear} 學年（{students.length} 人）
+              查詢結果：{academicYear} 學年（{students.length} 人）
             </h2>
             <div className="flex items-center gap-2">
               <button
@@ -429,6 +846,16 @@ const LanguageElectiveRoster: React.FC = () => {
               >
                 <Download size={14} />
                 下載 JSON
+              </button>
+              <button
+                type="button"
+                onClick={handleInheritLanguages}
+                disabled={inheriting || students.length === 0}
+                title="依姓名從上一學年度帶入選修語言；已手動改過的會保留不覆蓋"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 text-sm disabled:opacity-50"
+              >
+                {inheriting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                依姓名繼承過往學年
               </button>
               <button
                 type="button"
@@ -469,55 +896,131 @@ const LanguageElectiveRoster: React.FC = () => {
             >
               將選取學生設為上述語言
             </button>
+            {languageClassNames.length > 0 && (
+              <>
+                <select
+                  value={batchLanguageClass}
+                  onChange={(e) => setBatchLanguageClass(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm"
+                >
+                  <option value="">— 語言班別 —</option>
+                  {languageClassNames.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!batchLanguageClass || selectedIds.size === 0) return;
+                    setStudents((prev) =>
+                      prev.map((s, i) =>
+                        selectedIds.has(i) ? { ...s, languageClass: batchLanguageClass } : s
+                      )
+                    );
+                    setSelectedIds(new Set());
+                  }}
+                  disabled={selectedIds.size === 0 || !batchLanguageClass}
+                  className="px-3 py-1.5 bg-slate-600 text-white rounded text-sm hover:bg-slate-700 disabled:opacity-50"
+                >
+                  將選取學生設為上述班別
+                </button>
+              </>
+            )}
           </div>
 
-          <div className="overflow-x-auto max-h-[480px] overflow-y-auto border border-slate-200 rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-100 sticky top-0">
-                <tr>
-                  <th className="px-2 py-2 w-10 text-center">
-                    <input type="checkbox" checked={selectedIds.size === students.length && students.length > 0} onChange={selectAll} />
-                  </th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">班級</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">座號</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">姓名</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">選修語言</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {students.map((s, i) => (
-                  <tr key={`${s.className}-${s.seat}-${i}`} className="hover:bg-slate-50">
-                    <td className="px-2 py-2 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(i)}
-                        onChange={() => toggleSelect(i)}
-                      />
-                    </td>
-                    <td className="px-3 py-2 font-medium text-slate-800">{s.className}</td>
-                    <td className="px-3 py-2 text-slate-600">{s.seat}</td>
-                    <td className="px-3 py-2 text-slate-700">{s.name}</td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={s.language}
-                        onChange={(e) => updateStudentLanguage(i, e.target.value)}
-                        className="border rounded px-2 py-1 text-sm w-full max-w-[140px]"
-                      >
-                        {(() => {
-                          const opts = new Set(languageOptions);
-                          if (s.language && !opts.has(s.language)) opts.add(s.language);
-                          return Array.from(opts).map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ));
-                        })()}
-                      </select>
-                    </td>
-                  </tr>
+          <p className="mb-2 text-sm text-slate-600">
+            以下依班級分區顯示；<strong>選修語言</strong>為其中一項維度，可在此編輯並儲存。
+          </p>
+
+          <div className="overflow-x-auto max-h-[520px] overflow-y-auto border border-slate-200 rounded-lg">
+            {groupedByClass.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-sm">
+                {searchQuery.trim() ? '無符合條件的學生' : '尚無名單'}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200">
+                {groupedByClass.map(({ className, rows }) => (
+                  <div key={className} className="bg-white">
+                    <div className="sticky top-0 z-10 bg-slate-100 px-4 py-2 font-semibold text-slate-800 border-b border-slate-200">
+                      {className} 班（{rows.length} 人）
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-2 py-2 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={rows.every(({ i }) => selectedIds.has(i)) && rows.length > 0}
+                              onChange={() => {
+                                const allSelected = rows.every(({ i }) => selectedIds.has(i));
+                                setSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  rows.forEach(({ i }) => (allSelected ? next.delete(i) : next.add(i)));
+                                  return next;
+                                });
+                              }}
+                            />
+                          </th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">座號</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">姓名</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">選修語言</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">語言班別</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {rows.map(({ s, i }) => (
+                          <tr key={`${s.className}-${s.seat}-${i}`} className="hover:bg-slate-50">
+                            <td className="px-2 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(i)}
+                                onChange={() => toggleSelect(i)}
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-slate-600">{s.seat}</td>
+                            <td className="px-3 py-2 text-slate-700">{s.name}</td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={s.language}
+                                onChange={(e) => updateStudentLanguage(i, e.target.value)}
+                                className="border rounded px-2 py-1 text-sm w-full max-w-[140px]"
+                              >
+                                {(() => {
+                                  const opts = new Set(languageOptions);
+                                  if (s.language && !opts.has(s.language)) opts.add(s.language);
+                                  return Array.from(opts).map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ));
+                                })()}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={s.languageClass ?? ''}
+                                onChange={(e) => updateStudentLanguageClass(i, e.target.value)}
+                                className="border rounded px-2 py-1 text-sm w-full max-w-[120px]"
+                              >
+                                <option value="">—</option>
+                                {languageClassNames.map((n) => (
+                                  <option key={n} value={n}>{n}</option>
+                                ))}
+                                {s.languageClass && !languageClassNames.includes(s.languageClass) && (
+                                  <option value={s.languageClass}>{s.languageClass}</option>
+                                )}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

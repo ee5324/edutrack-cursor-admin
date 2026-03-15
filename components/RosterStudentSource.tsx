@@ -63,7 +63,7 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
             </div>
           ) : students.length === 0 ? (
             <p className="text-sm text-slate-500 py-2">
-              {academicYear ? `${academicYear} 學年尚無名單，請先至「學生語言選修登錄」建立。` : '請選擇學年度'}
+              {academicYear ? `${academicYear} 學年尚無名單，請先至「學生名單」建置名單。` : '請選擇學年度'}
             </p>
           ) : (
             <div className="max-h-48 overflow-y-auto border border-slate-200 rounded bg-white">
