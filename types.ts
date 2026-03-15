@@ -8,6 +8,8 @@ export interface Student {
   period: string; // B欄: 上課時間(節次)
   className: string; // C欄: 班級
   name: string; // D欄: 姓名
+  /** 座號（選填，從學生名單拖曳時帶入） */
+  seat?: string;
 }
 
 // 獲獎學生資料
@@ -15,6 +17,8 @@ export interface AwardStudent {
   className: string;
   name: string;
   awardName: string;
+  /** 座號（選填，從學生名單拖曳時帶入） */
+  seat?: string;
 }
 
 /** 學生語言選修登錄：單一學生一筆 */

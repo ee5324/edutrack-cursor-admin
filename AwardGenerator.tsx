@@ -36,6 +36,8 @@ const AwardGenerator: React.FC = () => {
     const [filteredSuggestions, setFilteredSuggestions] = useState<{className: string, name: string}[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const suggestionRef = useRef<HTMLDivElement>(null);
+    const groupSuggestionRef = useRef<HTMLDivElement>(null);
+    const [groupSearchName, setGroupSearchName] = useState('');
 
     // Manual Input Fields
     const [manualInput, setManualInput] = useState({ className: '', name: '', awardName: '' });
@@ -53,11 +55,12 @@ const AwardGenerator: React.FC = () => {
 
     useEffect(() => {
         fetchKnownStudents();
-        // Click outside to close suggestions
+        // Click outside to close suggestions (single + group mode)
         const handleClickOutside = (event: MouseEvent) => {
-            if (suggestionRef.current && !suggestionRef.current.contains(event.target as Node)) {
-                setShowSuggestions(false);
-            }
+            const target = event.target as Node;
+            const outsideSingle = !suggestionRef.current || !suggestionRef.current.contains(target);
+            const outsideGroup = !groupSuggestionRef.current || !groupSuggestionRef.current.contains(target);
+            if (outsideSingle && outsideGroup) setShowSuggestions(false);
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -107,6 +110,25 @@ const AwardGenerator: React.FC = () => {
 
     const selectSuggestion = (student: {className: string, name: string}) => {
         setManualInput(prev => ({ ...prev, className: student.className, name: student.name }));
+        setShowSuggestions(false);
+    };
+
+    const handleGroupNameSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setGroupSearchName(val);
+        if (val.trim()) {
+            const matches = knownStudents.filter(s => s.name.includes(val)).slice(0, 5);
+            setFilteredSuggestions(matches);
+            setShowSuggestions(matches.length > 0);
+        } else {
+            setShowSuggestions(false);
+        }
+    };
+
+    const selectGroupSuggestion = (student: {className: string, name: string}) => {
+        const awardName = groupInput.awardName.trim() || '獲獎';
+        setParsedStudents((prev) => [...prev, { className: student.className, name: student.name, awardName }]);
+        setGroupSearchName('');
         setShowSuggestions(false);
     };
 
@@ -655,6 +677,30 @@ const AwardGenerator: React.FC = () => {
                                                     placeholder="例如: 繪畫比賽 優選"
                                                 />
                                             </div>
+                                            <div className="relative" ref={groupSuggestionRef}>
+                                                <label className="block text-xs font-bold text-purple-700 mb-1">姓名 (自動搜尋帶入)</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={groupSearchName} 
+                                                    onChange={handleGroupNameSearch}
+                                                    className="w-full border rounded p-2" 
+                                                    placeholder="輸入姓名，選取後以目前獎項加入名單"
+                                                />
+                                                {showSuggestions && (
+                                                    <ul className="absolute z-10 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
+                                                        {filteredSuggestions.map((s, idx) => (
+                                                            <li 
+                                                                key={idx} 
+                                                                onClick={() => selectGroupSuggestion(s)}
+                                                                className="px-3 py-2 hover:bg-purple-50 cursor-pointer text-sm flex justify-between"
+                                                            >
+                                                                <span>{s.name}</span>
+                                                                <span className="text-gray-400 text-xs bg-gray-100 px-1 rounded">{s.className}班</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
                                             <div>
                                                 <label className="block text-xs font-bold text-purple-700 mb-1">學生名單 (一行一位)</label>
                                                 <textarea 
@@ -737,10 +783,10 @@ const AwardGenerator: React.FC = () => {
                             const raw = e.dataTransfer.getData(ROSTER_DRAG_TYPE);
                             if (!raw) return;
                             try {
-                                const { className, name } = JSON.parse(raw);
+                                const { className, name, seat } = JSON.parse(raw);
                                 if (className && name) {
                                     const awardName = groupInput.awardName || manualInput.awardName || '獲獎';
-                                    setParsedStudents((prev) => [...prev, { className, name, awardName }]);
+                                    setParsedStudents((prev) => [...prev, { className, name, awardName, ...(seat != null && seat !== '' && { seat: String(seat) }) }]);
                                 }
                             } catch (_) {}
                         }}
@@ -755,6 +801,7 @@ const AwardGenerator: React.FC = () => {
                                 <thead className="bg-gray-50 text-gray-500 sticky top-0">
                                     <tr>
                                         <th className="px-4 py-2 w-20">班級</th>
+                                        <th className="px-4 py-2 w-12">座號</th>
                                         <th className="px-4 py-2 w-24">姓名</th>
                                         <th className="px-4 py-2">獎項</th>
                                         <th className="px-4 py-2 w-10"></th>
@@ -764,6 +811,7 @@ const AwardGenerator: React.FC = () => {
                                     {parsedStudents.map((s, i) => (
                                         <tr key={i} className="hover:bg-gray-50">
                                             <td className="px-4 py-2 font-medium">{s.className}</td>
+                                            <td className="px-4 py-2 text-gray-600">{s.seat ?? '-'}</td>
                                             <td className="px-4 py-2">{s.name}</td>
                                             <td className="px-4 py-2 text-gray-600">{s.awardName}</td>
                                             <td className="px-4 py-2 text-center">

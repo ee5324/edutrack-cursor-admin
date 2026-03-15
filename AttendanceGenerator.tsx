@@ -469,7 +469,7 @@ const AttendanceGenerator: React.FC = () => {
                              </div>
 
                              <div className="flex-1 border-t pt-4 flex flex-col overflow-hidden">
-                                 <p className="text-sm font-bold text-gray-700 mb-2">解析結果預覽（可從上方語言選修名單拖曳加入）</p>
+                                 <p className="text-sm font-bold text-gray-700 mb-2">解析結果預覽（可從上方學生名單拖曳加入）</p>
                                  <div
                                      className="flex-1 overflow-y-auto border rounded bg-gray-50 p-0"
                                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
@@ -478,34 +478,36 @@ const AttendanceGenerator: React.FC = () => {
                                          const raw = e.dataTransfer.getData(ROSTER_DRAG_TYPE);
                                          if (!raw) return;
                                          try {
-                                             const { className, name } = JSON.parse(raw);
+                                             const { className, name, seat } = JSON.parse(raw);
                                              if (className && name) {
                                                  const nextId = parsedStudents.length > 0
                                                      ? String(Math.max(...parsedStudents.map((s) => parseInt(s.id, 10) || 0)) + 1)
                                                      : '1';
-                                                 setParsedStudents((prev) => [...prev, { id: nextId, period: defaultPeriod, className, name }]);
+                                                 setParsedStudents((prev) => [...prev, { id: nextId, period: defaultPeriod, className, name, ...(seat != null && seat !== '' && { seat: String(seat) }) }]);
                                              }
                                          } catch (_) {}
                                      }}
                                  >
                                      <table className="w-full text-sm text-left">
-                                         <thead className="bg-gray-100 sticky top-0">
-                                             <tr>
-                                                 <th className="px-3 py-1">編號</th>
-                                                 <th className="px-3 py-1">班級</th>
-                                                 <th className="px-3 py-1">姓名</th>
-                                                 <th className="px-3 py-1">節次</th>
-                                             </tr>
-                                         </thead>
-                                         <tbody className="divide-y divide-gray-200">
-                                             {parsedStudents.map((s, i) => (
-                                                 <tr key={i}>
-                                                     <td className="px-3 py-1">{s.id}</td>
-                                                     <td className="px-3 py-1">{s.className}</td>
-                                                     <td className="px-3 py-1">{s.name}</td>
-                                                     <td className="px-3 py-1 text-gray-500">{s.period}</td>
-                                                 </tr>
-                                             ))}
+                                        <thead className="bg-gray-100 sticky top-0">
+                                            <tr>
+                                                <th className="px-3 py-1">編號</th>
+                                                <th className="px-3 py-1">班級</th>
+                                                <th className="px-3 py-1 w-12">座號</th>
+                                                <th className="px-3 py-1">姓名</th>
+                                                <th className="px-3 py-1">節次</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {parsedStudents.map((s, i) => (
+                                                <tr key={i}>
+                                                    <td className="px-3 py-1">{s.id}</td>
+                                                    <td className="px-3 py-1">{s.className}</td>
+                                                    <td className="px-3 py-1 text-gray-600">{s.seat ?? '-'}</td>
+                                                    <td className="px-3 py-1">{s.name}</td>
+                                                    <td className="px-3 py-1 text-gray-500">{s.period}</td>
+                                                </tr>
+                                            ))}
                                          </tbody>
                                      </table>
                                      {parsedStudents.length === 0 && <div className="text-center py-8 text-gray-400">尚未解析資料</div>}

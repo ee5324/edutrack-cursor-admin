@@ -2,7 +2,7 @@
  * 考卷存檔：僅白名單內 Google 帳號可上傳、刪除、分享；支援資料夾分類
  * 資料存 Firestore（edutrack_exam_papers / edutrack_exam_paper_folders），檔案經 GAS 上傳至 Google Drive
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileText, Upload, Trash2, Share2, Loader2, ShieldCheck, Check, Folder, FolderPlus, Pencil, ClipboardCheck, ExternalLink } from 'lucide-react';
 import type { ExamPaper, ExamPaperFolder, ExamPaperCheck } from '../types';
 import {
@@ -57,13 +57,19 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
   const [savingFolderName, setSavingFolderName] = useState(false);
   const [uploadGrade, setUploadGrade] = useState<string>('');
   const [uploadDomain, setUploadDomain] = useState<string>('');
+  const [uploadSchoolYear, setUploadSchoolYear] = useState('');
+  const [uploadSemester, setUploadSemester] = useState('');
   const [uploadAuthorName, setUploadAuthorName] = useState('');
   const [uploadAuthorNote, setUploadAuthorNote] = useState('');
   const [checks, setChecks] = useState<ExamPaperCheck[]>([]);
   const [editingPaperId, setEditingPaperId] = useState<string | null>(null);
   const [editingAuthorName, setEditingAuthorName] = useState('');
   const [editingAuthorNote, setEditingAuthorNote] = useState('');
+  const [editingSchoolYear, setEditingSchoolYear] = useState('');
+  const [editingSemester, setEditingSemester] = useState('');
   const [savingAuthor, setSavingAuthor] = useState(false);
+  const [filterSchoolYear, setFilterSchoolYear] = useState('');
+  const [filterSemester, setFilterSemester] = useState('');
   const [updatingCheck, setUpdatingCheck] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,6 +143,8 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
         : selectedFolderId === FOLDER_NONE
           ? list.filter((p) => !p.folderId || p.folderId === '')
           : list.filter((p) => p.folderId === selectedFolderId);
+    if (filterSchoolYear) base = base.filter((p) => (p.schoolYear ?? '') === filterSchoolYear);
+    if (filterSemester) base = base.filter((p) => (p.semester ?? '') === filterSemester);
     return base.sort((a, b) => {
       const ga = gradeOrder(a.grade);
       const gb = gradeOrder(b.grade);
@@ -144,6 +152,9 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       return (b.uploadedAt || '').localeCompare(a.uploadedAt || '');
     });
   })();
+
+  const uniqueSchoolYears = useMemo(() => Array.from(new Set(list.map((p) => p.schoolYear).filter(Boolean))) as string[], [list]);
+  const uniqueSemesters = useMemo(() => Array.from(new Set(list.map((p) => p.semester).filter(Boolean))) as string[], [list]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -188,6 +199,8 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
         folderId: uploadFolderId ?? null,
         grade,
         domain,
+        schoolYear: uploadSchoolYear.trim() || undefined,
+        semester: uploadSemester.trim() || undefined,
         authorTeacherName: uploadAuthorName.trim() || undefined,
         authorTeacherNote: uploadAuthorNote.trim() || undefined,
         fileName: fileData.name || file.name,
@@ -231,6 +244,8 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
     try {
       await saveExamPaper({
         ...item,
+        schoolYear: editingSchoolYear.trim() || undefined,
+        semester: editingSemester.trim() || undefined,
         authorTeacherName: editingAuthorName.trim() || undefined,
         authorTeacherNote: editingAuthorNote.trim() || undefined,
       });
@@ -408,6 +423,28 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                 {(uploadGrade ? getDomainsForGrade(uploadGrade) : CHECKLIST_DOMAINS).map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">學年</label>
+              <input
+                type="text"
+                value={uploadSchoolYear}
+                onChange={(e) => setUploadSchoolYear(e.target.value)}
+                placeholder="選填，如 114"
+                className="w-16 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-sm text-slate-600">學期</label>
+              <select
+                value={uploadSemester}
+                onChange={(e) => setUploadSemester(e.target.value)}
+                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white min-w-[5rem]"
+              >
+                <option value="">— 選填 —</option>
+                <option value="上學期">上學期</option>
+                <option value="下學期">下學期</option>
               </select>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -689,11 +726,26 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
 
         {/* 考卷列表 */}
         <section className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-2">
+          <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center gap-3">
             <FileText size={18} className="text-slate-600" />
             <span className="font-semibold text-slate-900">
               {selectedFolderId === FOLDER_ALL ? '已存檔考卷' : selectedFolderId === FOLDER_NONE ? '未分類' : folders.find((f) => f.id === selectedFolderId)?.name ?? '考卷'}
             </span>
+            <span className="text-slate-400">|</span>
+            <label className="text-xs text-slate-500">學年</label>
+            <select value={filterSchoolYear} onChange={(e) => setFilterSchoolYear(e.target.value)} className="px-2 py-1 border border-slate-200 rounded text-sm bg-white">
+              <option value="">全部</option>
+              {uniqueSchoolYears.sort().map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <label className="text-xs text-slate-500">學期</label>
+            <select value={filterSemester} onChange={(e) => setFilterSemester(e.target.value)} className="px-2 py-1 border border-slate-200 rounded text-sm bg-white">
+              <option value="">全部</option>
+              {uniqueSemesters.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
           </div>
           {loading ? (
             <div className="p-8 flex justify-center">
@@ -720,6 +772,12 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 truncate">{item.fileName}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
+                      {(item.schoolYear || item.semester) && (
+                        <>
+                          <span className="text-slate-600">{[item.schoolYear, item.semester].filter(Boolean).join(' ')}</span>
+                          {' · '}
+                        </>
+                      )}
                       {item.grade && (
                         <span className="text-slate-600">{['一','二','三','四','五','六'][parseInt(item.grade, 10) - 1] || item.grade}年級</span>
                       )}
@@ -729,10 +787,16 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                       {item.uploadedBy} · {item.uploadedAt ? new Date(item.uploadedAt).toLocaleString('zh-TW') : ''}
                       {item.examType && ` · ${item.examType}`}
                     </p>
-                    {(item.authorTeacherName || item.authorTeacherNote || editingPaperId === item.id) && (
+                    {(item.authorTeacherName || item.authorTeacherNote || item.schoolYear || item.semester || editingPaperId === item.id) && (
                       <div className="mt-1.5 text-xs text-slate-600">
                         {editingPaperId === item.id ? (
                           <div className="flex flex-wrap items-center gap-2">
+                            <input type="text" value={editingSchoolYear} onChange={(e) => setEditingSchoolYear(e.target.value)} placeholder="學年" className="w-14 px-2 py-1 border border-slate-200 rounded text-sm" />
+                            <select value={editingSemester} onChange={(e) => setEditingSemester(e.target.value)} className="px-2 py-1 border border-slate-200 rounded text-sm bg-white">
+                              <option value="">學期</option>
+                              <option value="上學期">上學期</option>
+                              <option value="下學期">下學期</option>
+                            </select>
                             <input type="text" value={editingAuthorName} onChange={(e) => setEditingAuthorName(e.target.value)} placeholder="出題教師姓名" className="w-28 px-2 py-1 border border-slate-200 rounded text-sm" />
                             <input type="text" value={editingAuthorNote} onChange={(e) => setEditingAuthorNote(e.target.value)} placeholder="出題備註" className="min-w-[10rem] flex-1 px-2 py-1 border border-slate-200 rounded text-sm" />
                             <button type="button" onClick={() => handleSaveAuthorEdit(item)} disabled={savingAuthor} className="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs disabled:opacity-50">儲存</button>
@@ -740,16 +804,18 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                           </div>
                         ) : (
                           <>
+                            {(item.schoolYear || item.semester) && <span>學年學期：{[item.schoolYear, item.semester].filter(Boolean).join(' ')}</span>}
+                            {(item.schoolYear || item.semester) && (item.authorTeacherName || item.authorTeacherNote) && ' · '}
                             {item.authorTeacherName && <span>出題教師：{item.authorTeacherName}</span>}
                             {item.authorTeacherName && item.authorTeacherNote && ' · '}
                             {item.authorTeacherNote && <span>備註：{item.authorTeacherNote}</span>}
-                            <button type="button" onClick={() => { setEditingPaperId(item.id); setEditingAuthorName(item.authorTeacherName ?? ''); setEditingAuthorNote(item.authorTeacherNote ?? ''); }} className="ml-2 text-blue-600 hover:underline">編輯</button>
+                            <button type="button" onClick={() => { setEditingPaperId(item.id); setEditingAuthorName(item.authorTeacherName ?? ''); setEditingAuthorNote(item.authorTeacherNote ?? ''); setEditingSchoolYear(item.schoolYear ?? ''); setEditingSemester(item.semester ?? ''); }} className="ml-2 text-blue-600 hover:underline">編輯</button>
                           </>
                         )}
                       </div>
                     )}
-                    {!item.authorTeacherName && !item.authorTeacherNote && editingPaperId !== item.id && (
-                      <button type="button" onClick={() => { setEditingPaperId(item.id); setEditingAuthorName(''); setEditingAuthorNote(''); }} className="mt-1 text-xs text-slate-500 hover:text-slate-700">＋ 填寫出題教師／備註</button>
+                    {!item.authorTeacherName && !item.authorTeacherNote && !item.schoolYear && !item.semester && editingPaperId !== item.id && (
+                      <button type="button" onClick={() => { setEditingPaperId(item.id); setEditingAuthorName(''); setEditingAuthorNote(''); setEditingSchoolYear(item.schoolYear ?? ''); setEditingSemester(item.semester ?? ''); }} className="mt-1 text-xs text-slate-500 hover:text-slate-700">＋ 填寫學年學期／出題教師／備註</button>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
