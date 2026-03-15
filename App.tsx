@@ -4,6 +4,7 @@ import Login from './components/Login';
 import AllowedUsersManager from './components/AllowedUsersManager';
 import LanguageElectiveRoster from './components/LanguageElectiveRoster';
 import AttendanceSheetPage from './components/AttendanceSheetPage';
+import LanguageElectiveDashboard from './components/LanguageElectiveDashboard';
 import TodoCalendar from './components/TodoCalendar';
 import CampusMap from './components/CampusMap';
 import AwardGenerator from './AwardGenerator'; 
@@ -569,6 +570,8 @@ const App: React.FC = () => {
         return <LanguageElectiveRoster />;
       case 'language-elective':
         return <LanguageElectiveRoster />;
+      case 'language-dashboard':
+        return <LanguageElectiveDashboard />;
       case 'attendance':
         return <AttendanceSheetPage />;
       case 'campus-map':
