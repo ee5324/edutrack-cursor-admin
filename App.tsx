@@ -3,20 +3,24 @@ import Layout from './components/Layout';
 import Login from './components/Login';
 import AllowedUsersManager from './components/AllowedUsersManager';
 import LanguageElectiveRoster from './components/LanguageElectiveRoster';
+import AttendanceSheetPage from './components/AttendanceSheetPage';
 import TodoCalendar from './components/TodoCalendar';
 import CampusMap from './components/CampusMap';
 import AwardGenerator from './AwardGenerator'; 
 import VendorManager from './VendorManager';
 import ExamPapersTab from './components/ExamPapersTab';
 import ArchiveManager from './ArchiveManager';
-import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound } from 'lucide-react';
-import { setupSystem, getArchiveTasks } from './services/api';
+import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { setupSystem, getArchiveTasks, getLanguageElectiveRoster, getAllLanguageElectiveRosters, buildNameToLanguageFromRosters, saveLanguageElectiveRoster } from './services/api';
 import { migrateSheetToFirebase } from './services/migrateSheetToFirebase';
 import { onAuthStateChanged, signOut } from './services/auth';
 import { isSandbox, isPinBypassActive, isPinUiEnabled, setPinUiEnabled, setPinBypass, TEST_PIN } from './services/sandboxStore';
 import type { User } from 'firebase/auth';
 import type { AllowedUser } from './types';
 import { getAllowedUser } from './services/allowedUsers';
+import { loadLanguageOptions, saveLanguageOptions } from './utils/languageOptions';
+import { parseRosterFromRows, rosterMapToStudents, sheetToRows } from './utils/rosterImport';
 
 interface SettingsTabProps {
     currentUser: User | null;
@@ -27,6 +31,15 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
     const isDev = import.meta.env.DEV;
     const [pinUiEnabled, setPinUiEnabledState] = useState(() => isPinUiEnabled());
     const [pinBypassActive, setPinBypassActiveState] = useState(() => isPinBypassActive());
+    const [languageOptions, setLanguageOptions] = useState<string[]>(() => loadLanguageOptions());
+    const [newLanguageInput, setNewLanguageInput] = useState('');
+    const [uploadYear, setUploadYear] = useState('114');
+    const [uploadError, setUploadError] = useState<string | null>(null);
+    const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+    const [uploadFileName, setUploadFileName] = useState<string | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [rosterFormatOpen, setRosterFormatOpen] = useState(false);
+    const [rosterExampleOpen, setRosterExampleOpen] = useState(false);
 
     const togglePinUi = (enabled: boolean) => {
         setPinUiEnabled(enabled);
@@ -75,6 +88,72 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
         } finally {
             setMigrating(false);
         }
+    };
+
+    const addLanguageOption = () => {
+        const v = newLanguageInput.trim();
+        if (!v || languageOptions.includes(v)) return;
+        const next = [...languageOptions, v];
+        setLanguageOptions(next);
+        saveLanguageOptions(next);
+        setNewLanguageInput('');
+    };
+
+    const removeLanguageOption = (opt: string) => {
+        if (languageOptions.length <= 1) return;
+        const next = languageOptions.filter((o) => o !== opt);
+        setLanguageOptions(next);
+        saveLanguageOptions(next);
+    };
+
+    const handleRosterFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploadError(null);
+        setUploadSuccess(null);
+        setUploadFileName(file.name);
+        const isCsv = /\.csv$/i.test(file.name);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            setUploading(true);
+            try {
+                const raw = evt.target?.result;
+                let rows: string[][];
+                if (isCsv && typeof raw === 'string') {
+                    rows = raw.split(/\r?\n/).map((line) => line.split(',').map((c) => c.trim()));
+                } else if (!isCsv && raw) {
+                    const wb = XLSX.read(raw, { type: 'binary' });
+                    const sheet = wb.Sheets[wb.SheetNames[0]];
+                    rows = sheetToRows(sheet);
+                } else {
+                    setUploadError('無法讀取檔案');
+                    return;
+                }
+                const roster = parseRosterFromRows(rows);
+                const classCount = Object.keys(roster).length;
+                if (classCount === 0) {
+                    setUploadError('未偵測到符合格式的「班級」區塊，請確認 Excel/CSV 格式。');
+                    return;
+                }
+                const allRosters = await getAllLanguageElectiveRosters();
+                const prevYear = String(parseInt(uploadYear, 10) - 1);
+                const prevRoster = allRosters.find((r) => r.academicYear === prevYear);
+                const nameToLanguage = prevRoster ? buildNameToLanguageFromRosters([prevRoster]) : {};
+                const defaultLang = loadLanguageOptions()[0] ?? '無／未選';
+                const list = rosterMapToStudents(roster, nameToLanguage, defaultLang);
+                const doc = await getLanguageElectiveRoster(uploadYear);
+                const languageClassSettings = doc?.languageClassSettings ?? [];
+                await saveLanguageElectiveRoster(uploadYear, list, languageClassSettings);
+                setUploadSuccess(`已匯入 ${list.length} 人（${classCount} 班）至 ${uploadYear} 學年名單。`);
+            } catch (err: any) {
+                setUploadError(err?.message || '解析或儲存失敗');
+            } finally {
+                setUploading(false);
+            }
+        };
+        if (isCsv) reader.readAsText(file, 'utf-8');
+        else reader.readAsBinaryString(file);
+        e.target.value = '';
     };
 
     return (
@@ -228,6 +307,149 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
                     canManage={currentAccess?.role === 'admin' && currentAccess.enabled}
                 />
             </div>
+
+            {/* 管理語言類別（選修語言維度） */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-start gap-4 mb-6">
+                    <div className="bg-emerald-100 p-3 rounded-full">
+                        <BookOpen className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">管理語言類別</h3>
+                        <p className="text-gray-500 text-sm mt-1">
+                            學生名單的「選修語言」下拉選單由此管理，至少保留一項。新增或刪除後會即時套用，學生名單頁會讀取同一設定。
+                        </p>
+                    </div>
+                </div>
+                <div className="space-y-3 pl-0 sm:pl-[4.5rem]">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <input
+                            type="text"
+                            value={newLanguageInput}
+                            onChange={(e) => setNewLanguageInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addLanguageOption())}
+                            placeholder="輸入新類別名稱"
+                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-48 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        />
+                        <button
+                            type="button"
+                            onClick={addLanguageOption}
+                            disabled={!newLanguageInput.trim() || languageOptions.includes(newLanguageInput.trim())}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Plus size={14} /> 新增
+                        </button>
+                    </div>
+                    <ul className="flex flex-wrap gap-2">
+                        {languageOptions.map((opt) => (
+                            <li
+                                key={opt}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-800 text-sm"
+                            >
+                                <span>{opt}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => removeLanguageOption(opt)}
+                                    disabled={languageOptions.length <= 1}
+                                    className="text-gray-400 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="刪除此類別"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </div>
+
+            {/* 學生名單 Excel 上傳（每年約一次） */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-start gap-4 mb-6">
+                    <div className="bg-sky-100 p-3 rounded-full">
+                        <Upload className="w-6 h-6 text-sky-600" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">學生名單 Excel 上傳</h3>
+                        <p className="text-gray-500 text-sm mt-1">
+                            每年約一次，上傳 Excel 或 CSV 班級名單可建立或覆寫該學年核心名單；會依「姓名」繼承上一學年選修語言。完成後請至「學生名單」頁編輯選修語言與語言班別。
+                        </p>
+                    </div>
+                </div>
+                <div className="space-y-4 pl-0 sm:pl-[4.5rem]">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm font-medium text-gray-700">學年度</label>
+                            <input
+                                type="text"
+                                value={uploadYear}
+                                onChange={(e) => setUploadYear(e.target.value)}
+                                className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="114"
+                            />
+                        </div>
+                        <label className="flex flex-col items-center justify-center w-full max-w-xs h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                            <Upload className="w-8 h-8 text-gray-400 mb-1" />
+                            <span className="text-sm text-gray-600">選擇 .csv / .xlsx / .xls</span>
+                            <input type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={handleRosterFile} disabled={uploading} />
+                        </label>
+                    </div>
+                    {uploadFileName && <p className="text-sm text-gray-500 flex items-center gap-2"><FileSpreadsheet size={14} /> {uploadFileName}</p>}
+                    {uploading && <p className="text-sm text-sky-600 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> 匯入中…</p>}
+                    {uploadSuccess && <p className="text-sm text-green-700">{uploadSuccess}</p>}
+                    {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
+
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <button type="button" onClick={() => setRosterFormatOpen(!rosterFormatOpen)} className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left text-sm font-medium text-gray-800">
+                            <span className="flex items-center gap-2"><HelpCircle size={16} /> Excel / CSV 格式說明</span>
+                            {rosterFormatOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
+                        {rosterFormatOpen && (
+                            <div className="p-4 pt-0 space-y-2 text-sm text-gray-700 border-t border-gray-100">
+                                <p>系統會辨識「班級」區塊並擷取座號、姓名；上傳後依姓名繼承上一學年選修語言。</p>
+                                <ul className="list-disc pl-5 space-y-1">
+                                    <li>表頭：某一儲存格同時包含「班」與「級」，其<strong>右側一格</strong>為班級名稱。</li>
+                                    <li>座號：班級欄的<strong>左邊第 2 欄</strong>；姓名：<strong>左邊第 1 欄</strong>。</li>
+                                    <li>學生列：從班級列起<strong>下方第 2 列</strong>開始；座號為數字、姓名有內容才列入。</li>
+                                    <li>區塊結束：座號欄出現「合計」或「男」即結束該班。</li>
+                                </ul>
+                                <p className="text-gray-500">支援 .csv、.xlsx、.xls；CSV 請用 UTF-8。</p>
+                                <button type="button" onClick={() => setRosterExampleOpen((v) => !v)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300">
+                                    {rosterExampleOpen ? '收起範例' : '看範例表格'}
+                                </button>
+                                {rosterExampleOpen && (
+                                    <div className="mt-2 p-3 rounded-lg bg-gray-50 border border-gray-200 inline-block">
+                                        <p className="text-xs text-gray-500 mb-2">範例（擷取後會得到：101 班 座號 1 王小明、2 李小華）</p>
+                                        <table className="text-xs border-collapse border border-gray-300">
+                                            <tbody>
+                                                <tr>
+                                                    <td className="border border-gray-300 px-2 py-1 bg-gray-100 font-medium">座號</td>
+                                                    <td className="border border-gray-300 px-2 py-1 bg-gray-100 font-medium">姓名</td>
+                                                    <td className="border border-gray-300 px-2 py-1 bg-amber-100 font-medium">班級</td>
+                                                    <td className="border border-gray-300 px-2 py-1 bg-gray-100 font-medium">101</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-300 px-2 py-1">1</td>
+                                                    <td className="border border-gray-300 px-2 py-1">王小明</td>
+                                                    <td className="border border-gray-300 px-2 py-1" colSpan={2} />
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-300 px-2 py-1">2</td>
+                                                    <td className="border border-gray-300 px-2 py-1">李小華</td>
+                                                    <td className="border border-gray-300 px-2 py-1" colSpan={2} />
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-300 px-2 py-1 text-gray-500">合計</td>
+                                                    <td className="border border-gray-300 px-2 py-1" colSpan={3} />
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
@@ -321,11 +543,11 @@ const App: React.FC = () => {
       case 'calendar':
         return <TodoCalendar />;
       case 'student-roster':
-        return <LanguageElectiveRoster defaultView="roster" pageMode="roster" />;
+        return <LanguageElectiveRoster />;
       case 'language-elective':
-        return <LanguageElectiveRoster defaultView="roster" pageMode="query" />;
+        return <LanguageElectiveRoster />;
       case 'attendance':
-        return <LanguageElectiveRoster defaultView="sheets" pageMode="sheets" />;
+        return <AttendanceSheetPage />;
       case 'campus-map':
         return <CampusMap />;
       case 'awards':
