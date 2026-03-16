@@ -143,6 +143,10 @@ service cloud.firestore {
     match /edutrack_language_elective/{id} {
       allow read, write: if isEduTrackAllowedUser();
     }
+    // 系統設定（選修語言類別等，單一 doc settings）
+    match /edutrack_system/{docId} {
+      allow read, write: if isEduTrackAllowedUser();
+    }
     match /edutrack_allowed_users/{email} {
       allow read: if isEduTrackAdmin() || (isSignedIn() && request.auth.token.email == email);
       allow create, update, delete: if isEduTrackAdmin();

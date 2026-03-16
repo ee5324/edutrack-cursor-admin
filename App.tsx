@@ -11,16 +11,16 @@ import AwardGenerator from './AwardGenerator';
 import VendorManager from './VendorManager';
 import ExamPapersTab from './components/ExamPapersTab';
 import ArchiveManager from './ArchiveManager';
-import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { setupSystem, getArchiveTasks, getLanguageElectiveRoster, getAllLanguageElectiveRosters, buildNameToLanguageFromRosters, saveLanguageElectiveRoster } from './services/api';
+import { setupSystem, getArchiveTasks, getLanguageElectiveRoster, getAllLanguageElectiveRosters, buildNameToLanguageFromRosters, saveLanguageElectiveRoster, getLanguageOptions, saveLanguageOptionsToFirebase, mergeLanguageOptionsFromRosters } from './services/api';
 import { migrateSheetToFirebase } from './services/migrateSheetToFirebase';
 import { onAuthStateChanged, signOut } from './services/auth';
 import { isSandbox, isPinBypassActive, isPinUiEnabled, setPinUiEnabled, setPinBypass, TEST_PIN } from './services/sandboxStore';
 import type { User } from 'firebase/auth';
 import type { AllowedUser } from './types';
 import { getAllowedUser } from './services/allowedUsers';
-import { loadLanguageOptions, saveLanguageOptions } from './utils/languageOptions';
+import { loadLanguageOptions } from './utils/languageOptions';
 import { parseRosterFromRows, rosterMapToStudents, sheetToRows } from './utils/rosterImport';
 
 interface SettingsTabProps {
@@ -33,6 +33,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
     const [pinUiEnabled, setPinUiEnabledState] = useState(() => isPinUiEnabled());
     const [pinBypassActive, setPinBypassActiveState] = useState(() => isPinBypassActive());
     const [languageOptions, setLanguageOptions] = useState<string[]>(() => loadLanguageOptions());
+    const [languageOptionsLoading, setLanguageOptionsLoading] = useState(true);
     const [newLanguageInput, setNewLanguageInput] = useState('');
     const [uploadYear, setUploadYear] = useState('114');
     const [uploadError, setUploadError] = useState<string | null>(null);
@@ -52,6 +53,13 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
         setPinBypassActiveState(false);
         window.location.reload();
     };
+
+    useEffect(() => {
+        getLanguageOptions()
+            .then(setLanguageOptions)
+            .catch(() => {})
+            .finally(() => setLanguageOptionsLoading(false));
+    }, []);
 
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error', msg: string[], raw?: string } | null>(null);
@@ -91,20 +99,24 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
         }
     };
 
-    const addLanguageOption = () => {
+    const addLanguageOption = async () => {
         const v = newLanguageInput.trim();
         if (!v || languageOptions.includes(v)) return;
         const next = [...languageOptions, v];
         setLanguageOptions(next);
-        saveLanguageOptions(next);
+        try {
+            await saveLanguageOptionsToFirebase(next);
+        } catch (_) {}
         setNewLanguageInput('');
     };
 
-    const removeLanguageOption = (opt: string) => {
+    const removeLanguageOption = async (opt: string) => {
         if (languageOptions.length <= 1) return;
         const next = languageOptions.filter((o) => o !== opt);
         setLanguageOptions(next);
-        saveLanguageOptions(next);
+        try {
+            await saveLanguageOptionsToFirebase(next);
+        } catch (_) {}
     };
 
     const handleRosterFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,12 +353,27 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
                     <div>
                         <h3 className="text-lg font-semibold text-gray-900">管理語言類別</h3>
                         <p className="text-gray-500 text-sm mt-1">
-                            學生名單的「選修語言」下拉選單由此管理，至少保留一項。新增或刪除後會即時套用，學生名單頁會讀取同一設定。
+                            學生名單的「選修語言」下拉選單由此管理，至少保留一項；設定儲存於 Firebase，不會因換裝置而消失。若曾遺失，可按「從名單彙整」還原名單中已使用的語言類別。
                         </p>
                     </div>
                 </div>
+                {languageOptionsLoading && (
+                    <p className="text-sm text-slate-500 mb-2 pl-0 sm:pl-[4.5rem]">載入語言類別中…</p>
+                )}
                 <div className="space-y-3 pl-0 sm:pl-[4.5rem]">
                     <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    const merged = await mergeLanguageOptionsFromRosters();
+                                    setLanguageOptions(merged);
+                                } catch (_) {}
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200"
+                        >
+                            <RefreshCw size={14} /> 從名單彙整現有語言類別
+                        </button>
                         <input
                             type="text"
                             value={newLanguageInput}

@@ -6,6 +6,7 @@ import {
   getAllLanguageElectiveRosters,
   buildNameToLanguageFromRosters,
   saveLanguageElectiveRoster,
+  getLanguageOptions,
 } from '../services/api';
 import { loadLanguageOptions } from '../utils/languageOptions';
 
@@ -15,6 +16,12 @@ const LanguageElectiveRoster: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [languageOptions, setLanguageOptions] = useState<string[]>(() => loadLanguageOptions());
   const [batchLanguage, setBatchLanguage] = useState(() => loadLanguageOptions()[0] ?? '閩南語');
+  useEffect(() => {
+    getLanguageOptions().then((opts) => {
+      setLanguageOptions(opts);
+      setBatchLanguage((prev) => (opts.includes(prev) ? prev : opts[0] ?? prev));
+    });
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -49,6 +56,14 @@ const LanguageElectiveRoster: React.FC = () => {
     [filterSnapshot, students]
   );
   const languageClassNames = useMemo(() => languageClassSettings.map((s) => s.name), [languageClassSettings]);
+
+  /** 選修語言選項：系統設定選項 ＋ 名單中實際出現的語言（避免資料有「越南語」等但篩選沒有） */
+  const effectiveLanguageOptions = useMemo(() => {
+    const snap = filterSnapshot.length === students.length ? filterSnapshot : students;
+    const fromData = new Set(snap.map((s) => (s.language ?? '').trim()).filter(Boolean));
+    const combined = new Set([...languageOptions, ...fromData]);
+    return Array.from(combined).filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+  }, [languageOptions, filterSnapshot, students]);
 
   /** 依搜尋條件篩選（以 filterSnapshot 判斷），顯示用 students[i]，避免編輯時篩選結果變動導致跳走 */
   const filteredWithIndex = useMemo(() => {
@@ -139,8 +154,8 @@ const LanguageElectiveRoster: React.FC = () => {
   }, [allRosters, academicYear, students]);
 
   useEffect(() => {
-    if (languageOptions.length && !languageOptions.includes(batchLanguage)) setBatchLanguage(languageOptions[0]);
-  }, [languageOptions]);
+    if (effectiveLanguageOptions.length && !effectiveLanguageOptions.includes(batchLanguage)) setBatchLanguage(effectiveLanguageOptions[0]);
+  }, [effectiveLanguageOptions]);
 
   const loadSavedRoster = useCallback(async () => {
     setLoadingRoster(true);
@@ -414,7 +429,7 @@ const LanguageElectiveRoster: React.FC = () => {
                   className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[6rem] focus:ring-2 focus:ring-blue-300"
                 >
                   <option value="">全部</option>
-                  {languageOptions.map((opt) => (
+                  {effectiveLanguageOptions.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
@@ -555,7 +570,7 @@ const LanguageElectiveRoster: React.FC = () => {
               onChange={(e) => setBatchLanguage(e.target.value)}
               className="border rounded px-2 py-1 text-sm"
             >
-              {languageOptions.map((opt) => (
+              {effectiveLanguageOptions.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>

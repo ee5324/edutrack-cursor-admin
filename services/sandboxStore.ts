@@ -3,6 +3,7 @@
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
 import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting } from '../types';
+import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -103,6 +104,7 @@ const store = {
   examPaperFolders: [] as ExamPaperFolder[],
   examPaperChecks: [] as ExamPaperCheck[],
   languageElective: {} as Record<string, LanguageElectiveRosterDoc>,
+  systemSettings: { languageOptions: [] as string[] },
 };
 
 // --- Courses & Students ---
@@ -353,6 +355,31 @@ export function sandboxSaveLanguageElectiveRoster(
     languageClassSettings,
     updatedAt: new Date().toISOString(),
   };
+  return Promise.resolve();
+}
+
+// --- 系統設定（選修語言類別）---
+function collectLanguageOptionsFromRosters(): string[] {
+  const set = new Set<string>(DEFAULT_LANGUAGE_OPTIONS);
+  Object.values(store.languageElective).forEach((doc) => {
+    (doc.students ?? []).forEach((s) => {
+      const v = (s.language ?? '').trim();
+      if (v) set.add(v);
+    });
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+}
+
+export function sandboxGetLanguageOptions(): Promise<string[]> {
+  const existing = store.systemSettings.languageOptions;
+  if (Array.isArray(existing) && existing.length > 0) return Promise.resolve([...existing]);
+  const merged = collectLanguageOptionsFromRosters();
+  store.systemSettings.languageOptions = merged;
+  return Promise.resolve(merged);
+}
+
+export function sandboxSaveLanguageOptions(options: string[]): Promise<void> {
+  store.systemSettings.languageOptions = options.length ? [...options] : [...DEFAULT_LANGUAGE_OPTIONS];
   return Promise.resolve();
 }
 

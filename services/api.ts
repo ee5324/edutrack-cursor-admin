@@ -20,6 +20,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
+import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting } from '../types';
 import {
   isSandbox,
@@ -54,6 +55,8 @@ import {
   sandboxGetLanguageElectiveRoster,
   sandboxGetAllLanguageElectiveRosters,
   sandboxSaveLanguageElectiveRoster,
+  sandboxGetLanguageOptions,
+  sandboxSaveLanguageOptions,
 } from './sandboxStore';
 
 const GAS_API_URL = import.meta.env.VITE_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbzWyYHtUbAMIFGBtMtXGvdXuAIiml1pAdf0qKykQ3vzCY5QFdAsMjCoyZ_Znam7oxRC/exec';
@@ -669,6 +672,64 @@ export async function setExamPaperCheck(payload: { grade: string; domain: string
     { merge: true }
   );
   return { success: true };
+}
+
+// --- 系統設定（選修語言類別）：存於 Firestore，遺失時從名單彙整 ---
+const SYSTEM_SETTINGS_DOC_ID = 'settings';
+
+function collectLanguageOptionsFromRosters(rosters: { students?: { language?: string }[] }[]): string[] {
+  const set = new Set<string>(DEFAULT_LANGUAGE_OPTIONS);
+  rosters.forEach((r) => {
+    (r.students ?? []).forEach((s) => {
+      const v = (s.language ?? '').trim();
+      if (v) set.add(v);
+    });
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+}
+
+/** 取得選修語言類別：Firebase 有則回傳；無或空則從各學年名單彙整後寫入 Firebase 並回傳，確保不再消失 */
+export async function getLanguageOptions(forceRefresh = false): Promise<string[]> {
+  if (isSandbox()) return sandboxGetLanguageOptions();
+  const db = getDb();
+  if (!db) return [...DEFAULT_LANGUAGE_OPTIONS];
+  if (!forceRefresh && languageOptionsCache.length > 0) return [...languageOptionsCache];
+  const ref = doc(db, COLLECTIONS.SYSTEM, SYSTEM_SETTINGS_DOC_ID);
+  const snap = await getDoc(ref);
+  const data = snap.data();
+  const stored = Array.isArray(data?.languageOptions) ? data.languageOptions : [];
+  if (stored.length > 0) {
+    languageOptionsCache = stored;
+    return [...stored];
+  }
+  const rosters = await getAllLanguageElectiveRosters();
+  const merged = collectLanguageOptionsFromRosters(rosters);
+  await setDoc(ref, { languageOptions: merged, updatedAt: serverTimestamp() }, { merge: true });
+  languageOptionsCache = merged;
+  return [...merged];
+}
+
+let languageOptionsCache: string[] = [];
+
+/** 儲存選修語言類別至 Firebase */
+export async function saveLanguageOptionsToFirebase(options: string[]): Promise<void> {
+  if (isSandbox()) return sandboxSaveLanguageOptions(options);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const ref = doc(db, COLLECTIONS.SYSTEM, SYSTEM_SETTINGS_DOC_ID);
+  const list = options.length > 0 ? options : [...DEFAULT_LANGUAGE_OPTIONS];
+  await setDoc(ref, { languageOptions: list, updatedAt: serverTimestamp() }, { merge: true });
+  languageOptionsCache = list;
+}
+
+/** 從各學年名單彙整出所有出現過的語言，與目前設定做聯集後寫回 Firebase，並回傳新列表（用於「從名單恢復」） */
+export async function mergeLanguageOptionsFromRosters(): Promise<string[]> {
+  const rosters = await getAllLanguageElectiveRosters();
+  const fromRosters = collectLanguageOptionsFromRosters(rosters);
+  const current = await getLanguageOptions(true);
+  const merged = Array.from(new Set([...current, ...fromRosters])).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+  await saveLanguageOptionsToFirebase(merged);
+  return merged;
 }
 
 // --- 學生語言選修登錄 (Language Elective) ---

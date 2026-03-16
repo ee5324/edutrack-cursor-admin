@@ -3,7 +3,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { BarChart3, Loader2 } from 'lucide-react';
-import { getLanguageElectiveRoster } from '../services/api';
+import { getLanguageElectiveRoster, getLanguageOptions } from '../services/api';
 import { loadLanguageOptions } from '../utils/languageOptions';
 import type { LanguageElectiveStudent, LanguageClassSetting } from '../types';
 
@@ -23,6 +23,10 @@ const LanguageElectiveDashboard: React.FC = () => {
   const [languageClassSettings, setLanguageClassSettings] = useState<LanguageClassSetting[]>([]);
   const [loading, setLoading] = useState(false);
   const [languageOptions, setLanguageOptions] = useState<string[]>(() => loadLanguageOptions());
+
+  useEffect(() => {
+    getLanguageOptions().then(setLanguageOptions);
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
