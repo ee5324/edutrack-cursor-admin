@@ -196,6 +196,24 @@ const LanguageElectiveRoster: React.FC = () => {
     });
   };
 
+  /** 解決衝突：將同一姓名之所有列改為指定選修語言（以該年度為主），並標記為手動編輯 */
+  const applyConflictResolution = (name: string, language: string) => {
+    const trimmedName = (name ?? '').trim();
+    if (!trimmedName) return;
+    setStudents((prev) =>
+      prev.map((s) =>
+        (s.name ?? '').trim() === trimmedName ? { ...s, language } : s
+      )
+    );
+    setManualEditIndices((prev) => {
+      const next = new Set(prev);
+      students.forEach((s, i) => {
+        if ((s.name ?? '').trim() === trimmedName) next.add(i);
+      });
+      return next;
+    });
+  };
+
   const removeStudent = (index: number) => {
     setStudents((prev) => prev.filter((_, i) => i !== index));
     setFilterSnapshot((prev) => prev.filter((_, i) => i !== index));
@@ -668,13 +686,35 @@ const LanguageElectiveRoster: React.FC = () => {
           {crossYearLanguageDiffs.length > 0 && (
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">以下學生於其他學年度選修語言與本學年（{academicYear}）不同：</p>
-                <ul className="mt-1 list-disc list-inside space-y-0.5 text-amber-900">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">以下學生於其他學年度選修語言與本學年（{academicYear}）不同，可選擇以哪一學年為主：</p>
+                <ul className="mt-2 space-y-2 text-amber-900">
                   {crossYearLanguageDiffs.map((d) => (
-                    <li key={d.index}>
-                      {d.name} — 本學年：{d.currentLang || '（未選）'}
-                      {d.others.map((o) => `；${o.year} 學年：${o.lang || '（未選）'}`).join('')}
+                    <li key={`${d.index}-${d.name}`} className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{d.name}</span>
+                      <span className="text-amber-700">
+                        本學年：{d.currentLang || '（未選）'}
+                        {d.others.map((o) => `；${o.year} 學年：${o.lang || '（未選）'}`).join('')}
+                      </span>
+                      <span className="inline-flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          onClick={() => applyConflictResolution(d.name, d.currentLang ?? '')}
+                          className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                        >
+                          以本學年為主
+                        </button>
+                        {d.others.map((o) => (
+                          <button
+                            key={o.year}
+                            type="button"
+                            onClick={() => applyConflictResolution(d.name, o.lang ?? '')}
+                            className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                          >
+                            以{o.year}學年為主
+                          </button>
+                        ))}
+                      </span>
                     </li>
                   ))}
                 </ul>
