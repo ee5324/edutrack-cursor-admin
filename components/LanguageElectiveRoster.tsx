@@ -153,19 +153,18 @@ const LanguageElectiveRoster: React.FC = () => {
     return result;
   }, [allRosters, academicYear, students]);
 
-  /** 已選修語言（含閩南語）但未設定語言班別者；除閩南語外為必填，閩南語可免填（仍列示以提醒） */
+  /** 除閩南語外，已選其他語言但未設定語言班別者（閩南語可免填，不顯示） */
   const noLanguageClassWarnings = useMemo(() => {
-    const result: { index: number; name: string; language: string; isMinNan: boolean }[] = [];
+    const result: { index: number; name: string; language: string }[] = [];
     students.forEach((s, i) => {
       const lang = String(s.language ?? '').trim();
-      if (isLanguageUnset(lang)) return;
+      if (isLanguageUnset(lang) || lang === '閩南語') return;
       const lc = String(s.languageClass ?? '').trim();
       if (lc.length > 0) return;
       result.push({
         index: i,
         name: (s.name && String(s.name).trim()) || '—',
         language: lang,
-        isMinNan: lang === '閩南語',
       });
     });
     return result;
@@ -759,14 +758,11 @@ const LanguageElectiveRoster: React.FC = () => {
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <p className="font-medium">
-                  以下學生已選擇選修語言但未設定語言班別（除閩南語外建議填寫語言班別）：
-                </p>
+                <p className="font-medium">以下學生已選擇閩南語以外之選修語言，但未設定語言班別：</p>
                 <ul className="mt-1 list-disc list-inside space-y-0.5 text-amber-900">
                   {noLanguageClassWarnings.map((w) => (
                     <li key={w.index}>
-                      {w.name} — 選修語言：{w.language}
-                      {w.isMinNan ? '（閩南語可免填）' : ''}，語言班別：未設定
+                      {w.name} — 選修語言：{w.language}，語言班別：未設定
                     </li>
                   ))}
                 </ul>
@@ -895,11 +891,7 @@ const LanguageElectiveRoster: React.FC = () => {
                                 </select>
                                 {noLanguageClassWarnings.some((w) => w.index === i) && (
                                   <span
-                                    title={
-                                      noLanguageClassWarnings.find((w) => w.index === i)?.isMinNan
-                                        ? '已選閩南語，語言班別可免填'
-                                        : '已選閩南語以外之語言，請設定語言班別'
-                                    }
+                                    title="已選閩南語以外之語言，請設定語言班別"
                                     className="text-amber-600 flex-shrink-0"
                                   >
                                     <AlertTriangle size={14} />
