@@ -560,16 +560,17 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
       </section>
 
       <div className="flex flex-col md:flex-row gap-6">
-        {/* 資料夾列 */}
-        <aside id="exam-papers-folders" className="w-full md:w-56 shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-4">
-          <div className="px-4 py-3 border-b border-slate-200">
+        {/* 資料夾列：固定高度、列表可捲動，「新增資料夾」區塊固定於底部避免被遮蔽 */}
+        <aside id="exam-papers-folders" className="w-full md:w-56 shrink-0 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-4 max-h-[70vh] md:max-h-[75vh]">
+          <div className="px-4 py-3 border-b border-slate-200 shrink-0">
             <div className="flex items-center gap-2">
               <Folder size={18} className="text-slate-600" />
               <span className="font-semibold text-slate-900">資料夾</span>
             </div>
             <p className="mt-1 text-xs text-slate-500">拖曳考卷至此可變更所屬資料夾；可設上層彙整、直連 Google Drive</p>
           </div>
-          <nav className="p-2 space-y-0.5">
+          <nav className="flex flex-col flex-1 min-h-0 p-2">
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5">
             <button
               type="button"
               onClick={() => setSelectedFolderId(FOLDER_ALL)}
@@ -702,10 +703,12 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                 ))}
               </React.Fragment>
             ))}
-            <div className="pt-2 mt-1 border-t border-slate-100 space-y-2">
+            </div>
+            {/* 新增資料夾區塊固定於底部，不隨列表捲動而消失 */}
+            <div className="pt-2 mt-1 border-t border-slate-200 shrink-0 space-y-2 bg-white">
               <div className="flex gap-2">
-                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="新資料夾名稱" className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                <button type="button" onClick={handleAddFolder} disabled={addingFolder || !newFolderName.trim()} className="p-2 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50" title="新增資料夾">
+                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="新資料夾名稱" className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                <button type="button" onClick={handleAddFolder} disabled={addingFolder || !newFolderName.trim()} className="shrink-0 p-2 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 disabled:opacity-50" title="新增資料夾">
                   {addingFolder ? <Loader2 size={18} className="animate-spin" /> : <FolderPlus size={18} />}
                 </button>
               </div>
