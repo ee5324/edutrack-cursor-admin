@@ -153,6 +153,24 @@ const LanguageElectiveRoster: React.FC = () => {
     return result;
   }, [allRosters, academicYear, students]);
 
+  /** 已選修語言（含閩南語）但未設定語言班別者；除閩南語外為必填，閩南語可免填（仍列示以提醒） */
+  const noLanguageClassWarnings = useMemo(() => {
+    const result: { index: number; name: string; language: string; isMinNan: boolean }[] = [];
+    students.forEach((s, i) => {
+      const lang = String(s.language ?? '').trim();
+      if (isLanguageUnset(lang)) return;
+      const lc = String(s.languageClass ?? '').trim();
+      if (lc.length > 0) return;
+      result.push({
+        index: i,
+        name: (s.name && String(s.name).trim()) || '—',
+        language: lang,
+        isMinNan: lang === '閩南語',
+      });
+    });
+    return result;
+  }, [students]);
+
   useEffect(() => {
     if (effectiveLanguageOptions.length && !effectiveLanguageOptions.includes(batchLanguage)) setBatchLanguage(effectiveLanguageOptions[0]);
   }, [effectiveLanguageOptions]);
@@ -737,6 +755,25 @@ const LanguageElectiveRoster: React.FC = () => {
             </div>
           )}
 
+          {noLanguageClassWarnings.length > 0 && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">
+                  以下學生已選擇選修語言但未設定語言班別（除閩南語外建議填寫語言班別）：
+                </p>
+                <ul className="mt-1 list-disc list-inside space-y-0.5 text-amber-900">
+                  {noLanguageClassWarnings.map((w) => (
+                    <li key={w.index}>
+                      {w.name} — 選修語言：{w.language}
+                      {w.isMinNan ? '（閩南語可免填）' : ''}，語言班別：未設定
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           <p className="mb-2 text-sm text-slate-600">
             以下依班級分區顯示；可編輯班級、座號、姓名、選修語言、語言班別。篩選與分區以「儲存前」的資料為準，編輯後按「儲存至 Firebase」才會一併更新。
           </p>
@@ -842,19 +879,33 @@ const LanguageElectiveRoster: React.FC = () => {
                               </div>
                             </td>
                             <td className="px-3 py-2">
-                              <select
-                                value={s.languageClass ?? ''}
-                                onChange={(e) => updateStudentLanguageClass(i, e.target.value)}
-                                className="border rounded px-2 py-1 text-sm w-full max-w-[120px]"
-                              >
-                                <option value="">—</option>
-                                {languageClassNames.map((n) => (
-                                  <option key={n} value={n}>{n}</option>
-                                ))}
-                                {s.languageClass && !languageClassNames.includes(s.languageClass) && (
-                                  <option value={s.languageClass}>{s.languageClass}</option>
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={s.languageClass ?? ''}
+                                  onChange={(e) => updateStudentLanguageClass(i, e.target.value)}
+                                  className="border rounded px-2 py-1 text-sm w-full max-w-[120px]"
+                                >
+                                  <option value="">—</option>
+                                  {languageClassNames.map((n) => (
+                                    <option key={n} value={n}>{n}</option>
+                                  ))}
+                                  {s.languageClass && !languageClassNames.includes(s.languageClass) && (
+                                    <option value={s.languageClass}>{s.languageClass}</option>
+                                  )}
+                                </select>
+                                {noLanguageClassWarnings.some((w) => w.index === i) && (
+                                  <span
+                                    title={
+                                      noLanguageClassWarnings.find((w) => w.index === i)?.isMinNan
+                                        ? '已選閩南語，語言班別可免填'
+                                        : '已選閩南語以外之語言，請設定語言班別'
+                                    }
+                                    className="text-amber-600 flex-shrink-0"
+                                  >
+                                    <AlertTriangle size={14} />
+                                  </span>
                                 )}
-                              </select>
+                              </div>
                             </td>
                             <td className="px-2 py-2">
                               <button
