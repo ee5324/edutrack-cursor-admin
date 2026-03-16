@@ -42,6 +42,8 @@ const LanguageElectiveRoster: React.FC = () => {
   const [batchLanguageClass, setBatchLanguageClass] = useState('');
   /** 所有學年名單（用於跨學年語言選修不同警示） */
   const [allRosters, setAllRosters] = useState<{ academicYear: string; students: LanguageElectiveStudent[] }[]>([]);
+  /** 語言班別警示區塊是否展開 */
+  const [noLanguageClassWarningOpen, setNoLanguageClassWarningOpen] = useState(true);
   /** 新增學生表單 */
   const [showAddForm, setShowAddForm] = useState(false);
   const [newClassName, setNewClassName] = useState('');
@@ -755,18 +757,33 @@ const LanguageElectiveRoster: React.FC = () => {
           )}
 
           {noLanguageClassWarnings.length > 0 && (
-            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium">以下學生已選擇閩南語以外之選修語言，但未設定語言班別：</p>
-                <ul className="mt-1 list-disc list-inside space-y-0.5 text-amber-900">
-                  {noLanguageClassWarnings.map((w) => (
-                    <li key={w.index}>
-                      {w.name} — 選修語言：{w.language}，語言班別：未設定
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-800 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setNoLanguageClassWarningOpen((v) => !v)}
+                className="w-full flex items-center gap-2 p-3 text-left hover:bg-amber-100/80 transition-colors"
+              >
+                {noLanguageClassWarningOpen ? (
+                  <ChevronDown size={18} className="flex-shrink-0 text-amber-700" />
+                ) : (
+                  <ChevronRight size={18} className="flex-shrink-0 text-amber-700" />
+                )}
+                <AlertTriangle size={18} className="flex-shrink-0" />
+                <span className="font-medium flex-1">以下學生已選擇閩南語以外之選修語言，但未設定語言班別：</span>
+                <span className="text-amber-600 text-xs">（{noLanguageClassWarnings.length} 人）</span>
+              </button>
+              {noLanguageClassWarningOpen && (
+                <div className="px-3 pb-3 pt-0 flex items-start gap-2">
+                  <div className="w-[18px] flex-shrink-0" aria-hidden />
+                  <ul className="mt-1 list-disc list-inside space-y-0.5 text-amber-900 flex-1 min-w-0">
+                    {noLanguageClassWarnings.map((w) => (
+                      <li key={w.index}>
+                        {w.name} — 選修語言：{w.language}，語言班別：未設定
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
