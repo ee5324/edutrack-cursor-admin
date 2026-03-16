@@ -176,7 +176,7 @@ const TodoCalendar: React.FC = () => {
       try {
           await saveBatchTodos({ todos: newTodos });
           await fetchTodos();
-          showModal('成功', `已批次新增 ${newTodos.length} 筆輪值紀錄`, 'success');
+          // 成功不顯示 modal，僅失敗時提示
       } catch (e: any) {
           showModal('失敗', `批次儲存失敗: ${e.message}`, 'danger');
       } finally {
@@ -290,9 +290,9 @@ const TodoCalendar: React.FC = () => {
 
       await saveTodo(payload as any);
       await fetchTodos();
-      showModal('成功', '資料已儲存', 'success');
-    } catch (e) {
-        showModal('失敗', '儲存時發生錯誤', 'danger');
+      // 成功不顯示 modal，僅失敗時提示
+    } catch (e: any) {
+        showModal('失敗', e?.message || '儲存時發生錯誤', 'danger');
     } finally {
         setLoading(false);
     }
