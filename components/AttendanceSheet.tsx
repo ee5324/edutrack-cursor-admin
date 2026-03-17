@@ -76,8 +76,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
 
   return (
     <div 
-        id="attendance-sheet-root"
-        className="bg-white p-8 shadow-lg mx-auto overflow-x-auto print:shadow-none print:p-4 print:pt-2 print:w-full print:max-w-full print:overflow-visible print:box-border text-black"
+        className="attendance-sheet-root bg-white p-8 shadow-lg mx-auto overflow-x-auto print:shadow-none print:p-4 print:pt-2 print:w-full print:max-w-full print:overflow-visible print:box-border text-black"
         style={fontStyle}
     >
       {/* 標題區塊 */}

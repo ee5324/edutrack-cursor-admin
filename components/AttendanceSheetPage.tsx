@@ -159,7 +159,7 @@ const AttendanceSheetPage: React.FC = () => {
   }, [languageClassSettings]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 print:max-w-none print:mx-0 print:my-0">
+    <div className="max-w-6xl mx-auto space-y-6 print:max-w-none print:mx-0 print:my-0 print:space-y-0">
       <style>{`
         @media print {
           @page { size: A4 landscape; margin: 8mm; }
@@ -171,27 +171,46 @@ const AttendanceSheetPage: React.FC = () => {
             height: auto !important;
           }
           .no-print { display: none !important; }
+          .print-sheets-container {
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: none !important;
+          }
+          /* 參照開課通知單：每張點名表一頁，min-height 撐滿一頁 + page-break-after */
           .print-page {
             page-break-after: always;
             break-after: page;
-            page-break-inside: avoid;
-            break-inside: avoid-page;
+            min-height: 100vh;
+            min-height: 100dvh;
             width: 100%;
             box-sizing: border-box;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+          }
+          .print-page:first-child {
+            page-break-before: auto;
+          }
+          .print-page:not(:first-child) {
+            page-break-before: always;
+            break-before: page;
           }
           .print-page:last-child {
             page-break-after: auto;
             break-after: auto;
           }
-          .print-sheets-container { margin: 0 !important; padding: 0 !important; max-width: none !important; }
-          #attendance-sheet-root {
+          .attendance-sheet-root {
             width: 100% !important;
             max-width: 100% !important;
             padding: 2mm 0 0 0 !important;
             margin: 0 !important;
             box-sizing: border-box;
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
-          #attendance-sheet-root table { table-layout: fixed; width: 100% !important; }
+          .attendance-sheet-root table { table-layout: fixed; width: 100% !important; }
           .print-date-cell { width: 8mm !important; min-width: 8mm !important; max-width: 8mm !important; }
         }
       `}</style>
@@ -407,7 +426,7 @@ const AttendanceSheetPage: React.FC = () => {
         )}
       </div>
 
-      <div className="space-y-6 pb-20">
+      <div className="space-y-6 pb-20 print:space-y-0 print:pb-0">
         <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex justify-between items-center no-print">
           <div className="text-sm text-blue-800 flex-1 min-w-0">
             <strong>點名單預覽</strong> — 依語言班別共 {sheetDataList.length} 張；目前勾選輸出 {selectedSheetDataList.length} 張。
@@ -483,7 +502,7 @@ const AttendanceSheetPage: React.FC = () => {
         )}
         <div className="print-sheets-container">
           {selectedSheetDataList.map((data) => (
-            <div key={data.courseName} className="print-page">
+            <div key={data.courseName} className="print-page print:min-h-screen print:flex print:flex-col print:justify-start print:pt-4">
               <AttendanceSheet data={data} />
             </div>
           ))}
