@@ -176,19 +176,19 @@ const AttendanceSheetPage: React.FC = () => {
             padding: 0 !important;
             max-width: none !important;
           }
-          /* 參照開課通知單：每張點名表一頁，min-height 撐滿一頁 + page-break-after */
+          /* 每張點名表 = 一頁 A4 橫向：固定高度 210mm（A4 短邊），預覽與列印皆一表一頁 */
           .print-page {
-            page-break-after: always;
-            break-after: page;
-            min-height: 100vh;
-            min-height: 100dvh;
-            width: 100%;
+            width: 100% !important;
+            height: 210mm !important;
+            min-height: 210mm !important;
+            max-height: 210mm !important;
             box-sizing: border-box;
             margin: 0 !important;
             padding: 0 !important;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
+            page-break-after: always;
+            break-after: page;
+            overflow: hidden;
+            display: block;
           }
           .print-page:first-child {
             page-break-before: auto;
@@ -502,7 +502,7 @@ const AttendanceSheetPage: React.FC = () => {
         )}
         <div className="print-sheets-container">
           {selectedSheetDataList.map((data) => (
-            <div key={data.courseName} className="print-page print:min-h-screen print:flex print:flex-col print:justify-start print:pt-4">
+            <div key={data.courseName} className="print-page">
               <AttendanceSheet data={data} />
             </div>
           ))}
