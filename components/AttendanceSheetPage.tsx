@@ -6,7 +6,7 @@ import { FileText, Calendar as CalendarIcon, Printer, ChevronDown, ChevronRight,
 import AttendanceSheet from './AttendanceSheet';
 import { getLanguageElectiveRoster, saveLanguageElectiveRoster, getCalendarSettings } from '../services/api';
 import type { LanguageElectiveStudent, LanguageClassSetting, AttendanceTableData, Student, CalendarSettings } from '../types';
-import { buildAttendanceSheetsPrintHtml } from '../utils/attendancePrintHtml';
+import { buildAttendanceSheetsPrintHtml, mergeSheetsByLanguageAndTeacher } from '../utils/attendancePrintHtml';
 
 const AttendanceSheetPage: React.FC = () => {
   const [academicYear, setAcademicYear] = useState('114');
@@ -23,6 +23,7 @@ const AttendanceSheetPage: React.FC = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [calendarSettings, setCalendarSettings] = useState<CalendarSettings | null>(null);
+  const [calendarSettingsError, setCalendarSettingsError] = useState<string | null>(null);
 
   const addLanguageClassSetting = useCallback(() => {
     setLanguageClassSettings((prev) => [
@@ -70,11 +71,13 @@ const AttendanceSheetPage: React.FC = () => {
 
   const loadCalendarSettings = useCallback(async () => {
     try {
+      setCalendarSettingsError(null);
       const sem = semester.includes('學期') ? semester : `${semester}學期`;
       const cal = await getCalendarSettings(academicYear, sem);
       setCalendarSettings(cal ?? null);
-    } catch {
+    } catch (e: any) {
       setCalendarSettings(null);
+      setCalendarSettingsError(e?.message || '載入學期設定失敗（可能是權限或 Firebase 專案不一致）');
     }
   }, [academicYear, semester]);
 
@@ -130,9 +133,18 @@ const AttendanceSheetPage: React.FC = () => {
     });
   };
 
+  const periodFromClassTime = (t: string): string => {
+    const s = (t ?? '').trim();
+    const m = s.match(/^W[1-5]-(.+)$/i);
+    if (!m) return '第一節';
+    const suffix = m[1].trim();
+    if (suffix === '早') return '早自習';
+    if (/^\d+$/.test(suffix)) return `第${parseInt(suffix, 10)}節`;
+    return suffix;
+  };
+
   const sheetDataList = useMemo((): AttendanceTableData[] => {
     const list: AttendanceTableData[] = [];
-    const defaultPeriod = '第一節';
     for (const setting of languageClassSettings) {
       const name = setting.name?.trim();
       if (!name) continue;
@@ -143,9 +155,10 @@ const AttendanceSheetPage: React.FC = () => {
           return c !== 0 ? c : parseInt(a.seat, 10) - parseInt(b.seat, 10);
         });
       if (rosterStudents.length === 0) continue;
+      const period = periodFromClassTime(setting.time ?? '');
       const sheetStudents: Student[] = rosterStudents.map((s, i) => ({
         id: String(i + 1),
-        period: defaultPeriod,
+        period,
         className: s.className,
         name: s.name,
       }));
@@ -183,6 +196,11 @@ const AttendanceSheetPage: React.FC = () => {
     return sheetDataList.filter((d) => selectedSheetNames.has(d.courseName));
   }, [sheetDataList, selectedSheetNames]);
 
+  const mergedSelectedSheetDataList = useMemo(() => {
+    if (selectedSheetDataList.length === 0) return [];
+    return mergeSheetsByLanguageAndTeacher(selectedSheetDataList);
+  }, [selectedSheetDataList]);
+
   const classCount = useMemo(() => {
     const names = new Set(languageClassSettings.map((s) => s.name?.trim()).filter(Boolean));
     return names.size;
@@ -190,13 +208,13 @@ const AttendanceSheetPage: React.FC = () => {
 
   /** 列印：開新視窗寫入整份 HTML，載入完成後縮放（若超出一頁）、列印、關閉；若無法開新視窗則提示允許彈出 */
   const handlePrintWithNewWindow = useCallback(() => {
-    if (selectedSheetDataList.length === 0) return;
+    if (mergedSelectedSheetDataList.length === 0) return;
     const win = window.open('', '_blank');
     if (!win) {
       alert('無法開啟列印視窗，請允許瀏覽器的彈出視窗後再試。');
       return;
     }
-    const html = buildAttendanceSheetsPrintHtml(selectedSheetDataList);
+    const html = buildAttendanceSheetsPrintHtml(mergedSelectedSheetDataList);
     win.document.write(html);
     win.document.close();
     const doPrint = () => {
@@ -206,7 +224,7 @@ const AttendanceSheetPage: React.FC = () => {
     };
     if (win.document.readyState === 'complete') setTimeout(doPrint, 50);
     else win.onload = doPrint;
-  }, [selectedSheetDataList]);
+  }, [mergedSelectedSheetDataList]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 print:max-w-none print:mx-0 print:my-0 print:space-y-0">
@@ -454,6 +472,9 @@ const AttendanceSheetPage: React.FC = () => {
                   生成日期
                 </button>
               </div>
+              {calendarSettingsError && (
+                <p className="text-xs text-red-600 mt-1 whitespace-pre-wrap">學期設定載入失敗：{calendarSettingsError}</p>
+              )}
               {calendarSettings?.startDate && calendarSettings?.endDate && (
                 <p className="text-xs text-slate-600">學期區間：{calendarSettings.startDate} ～ {calendarSettings.endDate}</p>
               )}
@@ -486,7 +507,7 @@ const AttendanceSheetPage: React.FC = () => {
       <div className="space-y-6 pb-20 print:space-y-0 print:pb-0">
         <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex justify-between items-center no-print">
           <div className="text-sm text-blue-800 flex-1 min-w-0">
-            <strong>點名單預覽</strong> — 依語言班別共 {sheetDataList.length} 張；目前勾選輸出 {selectedSheetDataList.length} 張。
+            <strong>點名單預覽</strong> — 依語言班別共 {sheetDataList.length} 張；目前勾選輸出 {mergedSelectedSheetDataList.length} 張。
             <div className="mt-2">
               <button
                 type="button"
@@ -544,9 +565,9 @@ const AttendanceSheetPage: React.FC = () => {
           <button
             type="button"
             onClick={handlePrintWithNewWindow}
-            disabled={selectedSheetDataList.length === 0}
+            disabled={mergedSelectedSheetDataList.length === 0}
             className="flex items-center bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900 disabled:opacity-50 disabled:hover:bg-slate-800"
-            title={selectedSheetDataList.length === 0 ? '請先勾選要輸出的點名單' : '列印'}
+            title={mergedSelectedSheetDataList.length === 0 ? '請先勾選要輸出的點名單' : '列印'}
           >
             <Printer size={18} className="mr-2" /> 列印
           </button>
@@ -558,7 +579,7 @@ const AttendanceSheetPage: React.FC = () => {
           </div>
         )}
         <div className="print-sheets-container">
-          {selectedSheetDataList.map((data) => (
+          {mergedSelectedSheetDataList.map((data) => (
             <div key={data.courseName} className="print-page">
               <AttendanceSheet data={data} />
             </div>

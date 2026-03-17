@@ -20,12 +20,17 @@ function formatDateMMDD(d: Date): string {
 
 /** 上課時間顯示用：去掉「-早」後綴，例如 W3-早 → W3 */
 function formatClassTimeForDisplay(classTime: string): string {
-  return (classTime ?? '').replace(/-早$/, '');
+  const s = (classTime ?? '').trim();
+  // W1-早 / W1-1 / W1-2 ... 顯示為 W1
+  const m = s.match(/^(W[1-5])-.+$/i);
+  if (m) return m[1].toUpperCase();
+  return s.replace(/-早$/, '');
 }
 
 /** 是否為「每週時間」顯示（週一～週日），合併表用 */
 function isWeeklyTimeLabel(classTime: string): boolean {
-  return /^週[一二三四五六日]$/.test((classTime ?? '').trim());
+  const t = (classTime ?? '').trim();
+  return /^週[一二三四五六日]$/.test(t) || /^W[1-5]$/i.test(t);
 }
 
 interface ProcessedStudent extends Student {
@@ -198,6 +203,9 @@ function getLanguageType(courseName: string): string {
 /** 由上課時間字串解析星期幾（週一=1 … 週日=0），無法解析時回傳 -1 */
 function getDayOfWeekFromClassTime(classTime: string): number {
   const t = (classTime ?? '').trim();
+  // W1-早 / W1-1 ...（W1=週一, W5=週五）
+  const m = t.match(/^W([1-5])(?:-.+)?$/i);
+  if (m) return parseInt(m[1], 10);
   if (/週一/.test(t)) return 1;
   if (/週二/.test(t)) return 2;
   if (/週三/.test(t)) return 3;
@@ -208,7 +216,7 @@ function getDayOfWeekFromClassTime(classTime: string): number {
   return -1;
 }
 
-const DAY_NAMES: Record<number, string> = { 0: '週日', 1: '週一', 2: '週二', 3: '週三', 4: '週四', 5: '週五', 6: '週六' };
+const DAY_NAMES: Record<number, string> = { 1: 'W1', 2: 'W2', 3: 'W3', 4: 'W4', 5: 'W5' };
 
 /**
  * 同一週幾、同一位老師、不同節的點名表合併為「多表合一」：一頁一表，所有該週幾的日期為欄，學生依「節」分組（晨光時間、第1節…）。

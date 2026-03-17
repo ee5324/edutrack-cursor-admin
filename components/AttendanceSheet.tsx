@@ -17,9 +17,13 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
     students 
   } = data;
 
-  // 上課時間顯示：去掉「-早」等後綴，例如 W3-早 → W3；合併表為週X 時顯示「每週時間」
-  const displayClassTime = (classTime ?? '').replace(/-早$/, '');
-  const isWeeklyTime = /^週[一二三四五六日]$/.test(displayClassTime);
+  // 上課時間顯示：
+  // - W1-早 / W1-1 / W1-2 ... 顯示為 W1
+  // - 合併表為 W1/W2... 或 週一/週二... 時顯示「每週時間」
+  const rawClassTime = (classTime ?? '').trim();
+  const wMatch = rawClassTime.match(/^(W[1-5])-.+$/i);
+  const displayClassTime = wMatch ? wMatch[1].toUpperCase() : rawClassTime.replace(/-早$/, '');
+  const isWeeklyTime = /^週[一二三四五六日]$/.test(displayClassTime) || /^W[1-5]$/.test(displayClassTime);
   const timeLabel = isWeeklyTime ? '每週時間' : '上課時間';
 
   // 格式化日期：MM/DD
