@@ -85,6 +85,8 @@ export const COLLECTIONS = {
   LANGUAGE_ELECTIVE: `${COLLECTION_PREFIX}language_elective`,
   /** 系統設定（如選修語言類別），單一 doc settings */
   SYSTEM: `${COLLECTION_PREFIX}system`,
+  /** 學期／放假日設定（點名單用），doc id = 學年_學期，如 114_下學期 */
+  CALENDAR_SETTINGS: `${COLLECTION_PREFIX}calendar_settings`,
 } as const;
 
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */

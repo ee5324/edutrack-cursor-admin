@@ -4,8 +4,8 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { FileText, Calendar as CalendarIcon, Printer, ChevronDown, ChevronRight, Loader2, X, BookOpen, Plus, Trash2, Save } from 'lucide-react';
 import AttendanceSheet from './AttendanceSheet';
-import { getLanguageElectiveRoster, saveLanguageElectiveRoster } from '../services/api';
-import type { LanguageElectiveStudent, LanguageClassSetting, AttendanceTableData, Student } from '../types';
+import { getLanguageElectiveRoster, saveLanguageElectiveRoster, getCalendarSettings } from '../services/api';
+import type { LanguageElectiveStudent, LanguageClassSetting, AttendanceTableData, Student, CalendarSettings } from '../types';
 import { buildAttendanceSheetsPrintHtml } from '../utils/attendancePrintHtml';
 
 const AttendanceSheetPage: React.FC = () => {
@@ -24,6 +24,7 @@ const AttendanceSheetPage: React.FC = () => {
   const [printSelectionOpen, setPrintSelectionOpen] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [calendarSettings, setCalendarSettings] = useState<CalendarSettings | null>(null);
 
   const addLanguageClassSetting = useCallback(() => {
     setLanguageClassSettings((prev) => [
@@ -69,6 +70,20 @@ const AttendanceSheetPage: React.FC = () => {
     loadRoster();
   }, [loadRoster]);
 
+  const loadCalendarSettings = useCallback(async () => {
+    try {
+      const sem = semester.includes('學期') ? semester : `${semester}學期`;
+      const cal = await getCalendarSettings(academicYear, sem);
+      setCalendarSettings(cal ?? null);
+    } catch {
+      setCalendarSettings(null);
+    }
+  }, [academicYear, semester]);
+
+  useEffect(() => {
+    loadCalendarSettings();
+  }, [loadCalendarSettings]);
+
   const handleAddDate = () => {
     if (dateInput) {
       const d = new Date(dateInput);
@@ -83,15 +98,33 @@ const AttendanceSheetPage: React.FC = () => {
     setDates((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const toYYYYMMDD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const handleGenerateDates = () => {
     if (!genStartDate || !genEndDate) return;
-    const start = new Date(genStartDate);
-    const end = new Date(genEndDate);
+    let start = new Date(genStartDate);
+    let end = new Date(genEndDate);
+    if (calendarSettings?.startDate) {
+      const rangeStart = new Date(calendarSettings.startDate);
+      if (rangeStart > start) start = rangeStart;
+    }
+    if (calendarSettings?.endDate) {
+      const rangeEnd = new Date(calendarSettings.endDate);
+      if (rangeEnd < end) end = rangeEnd;
+    }
+    const holidaySet = new Set(calendarSettings?.holidays ?? []);
     const targetDay = parseInt(genDayOfWeek, 10);
     const newDates: Date[] = [];
     let current = new Date(start);
     while (current <= end) {
-      if (current.getDay() === targetDay) newDates.push(new Date(current));
+      if (current.getDay() === targetDay && !holidaySet.has(toYYYYMMDD(current))) {
+        newDates.push(new Date(current));
+      }
       current.setDate(current.getDate() + 1);
     }
     setDates((prev) => {
@@ -159,7 +192,7 @@ const AttendanceSheetPage: React.FC = () => {
     return names.size;
   }, [languageClassSettings]);
 
-  /** 列印：開新視窗寫入整份 HTML，列印後關閉；若無法開新視窗則提示允許彈出 */
+  /** 列印：開新視窗寫入整份 HTML，載入完成後縮放（若超出一頁）、列印、關閉；若無法開新視窗則提示允許彈出 */
   const handlePrintWithNewWindow = useCallback(() => {
     if (selectedSheetDataList.length === 0) return;
     const win = window.open('', '_blank');
@@ -170,9 +203,13 @@ const AttendanceSheetPage: React.FC = () => {
     const html = buildAttendanceSheetsPrintHtml(selectedSheetDataList);
     win.document.write(html);
     win.document.close();
-    win.focus();
-    win.onafterprint = () => win.close();
-    win.print();
+    const doPrint = () => {
+      win.focus();
+      win.onafterprint = () => win.close();
+      win.print();
+    };
+    if (win.document.readyState === 'complete') setTimeout(doPrint, 50);
+    else win.onload = doPrint;
   }, [selectedSheetDataList]);
 
   return (
@@ -401,6 +438,9 @@ const AttendanceSheetPage: React.FC = () => {
           <div className="p-4 pt-0 space-y-3">
             <div className="bg-blue-50 p-4 rounded-lg">
               <h4 className="font-bold text-blue-800 text-sm mb-2">批次生成（每週固定）</h4>
+              {calendarSettings && (calendarSettings.startDate || calendarSettings.endDate || (calendarSettings.holidays?.length ?? 0) > 0) && (
+                <p className="text-xs text-blue-700 mb-2">已套用 Firebase 學期區間與放假日，生成時會排除學期外與放假日；仍可手動加入或刪除日期。</p>
+              )}
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <input type="date" value={genStartDate} onChange={(e) => setGenStartDate(e.target.value)} className="border rounded p-1 text-sm" />
                 <input type="date" value={genEndDate} onChange={(e) => setGenEndDate(e.target.value)} className="border rounded p-1 text-sm" />
@@ -414,9 +454,23 @@ const AttendanceSheetPage: React.FC = () => {
                   <option value="0">週日</option>
                 </select>
               </div>
-              <button type="button" onClick={handleGenerateDates} className="w-full bg-blue-600 text-white py-1.5 rounded text-sm hover:bg-blue-700">
-                生成日期
-              </button>
+              <div className="flex gap-2 flex-wrap">
+                {calendarSettings?.startDate != null && calendarSettings?.endDate != null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGenStartDate(calendarSettings.startDate!);
+                      setGenEndDate(calendarSettings.endDate!);
+                    }}
+                    className="px-3 py-1.5 rounded text-sm bg-slate-600 text-white hover:bg-slate-700"
+                  >
+                    依學期設定帶入區間
+                  </button>
+                )}
+                <button type="button" onClick={handleGenerateDates} className="flex-1 min-w-[6rem] bg-blue-600 text-white py-1.5 rounded text-sm hover:bg-blue-700">
+                  生成日期
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-600 mb-1">手動加入日期</label>

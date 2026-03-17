@@ -96,6 +96,18 @@ export interface AttendanceTableData {
   students: Student[]; // A6開始的學生列
 }
 
+/** 學期／放假日設定（Firebase 點名單用），doc id = 學年_學期 */
+export interface CalendarSettings {
+  academicYear: string;
+  semester: string;
+  /** 學期開始日 YYYY-MM-DD */
+  startDate?: string;
+  /** 學期結束日 YYYY-MM-DD */
+  endDate?: string;
+  /** 放假日 YYYY-MM-DD 陣列 */
+  holidays?: string[];
+}
+
 // 聯絡人資訊
 export interface Contact {
   name: string;

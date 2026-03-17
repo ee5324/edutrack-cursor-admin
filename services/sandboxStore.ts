@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -105,6 +105,7 @@ const store = {
   examPaperChecks: [] as ExamPaperCheck[],
   languageElective: {} as Record<string, LanguageElectiveRosterDoc>,
   systemSettings: { languageOptions: [] as string[] },
+  calendarSettings: {} as Record<string, CalendarSettings>,
 };
 
 // --- Courses & Students ---
@@ -356,6 +357,13 @@ export function sandboxSaveLanguageElectiveRoster(
     updatedAt: new Date().toISOString(),
   };
   return Promise.resolve();
+}
+
+// --- 學期／放假日設定 (點名單用) ---
+export function sandboxGetCalendarSettings(academicYear: string, semester: string): Promise<CalendarSettings | null> {
+  const key = `${academicYear}_${semester}`;
+  const doc = store.calendarSettings[key];
+  return Promise.resolve(doc ?? null);
 }
 
 // --- 系統設定（選修語言類別）---

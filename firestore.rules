@@ -147,6 +147,10 @@ service cloud.firestore {
     match /edutrack_system/{docId} {
       allow read, write: if isEduTrackAllowedUser();
     }
+    // 學期／放假日設定（點名單用，doc id = 學年_學期）
+    match /edutrack_calendar_settings/{docId} {
+      allow read, write: if isEduTrackAllowedUser();
+    }
     match /edutrack_allowed_users/{email} {
       allow read: if isEduTrackAdmin() || (isSignedIn() && request.auth.token.email == email);
       allow create, update, delete: if isEduTrackAdmin();

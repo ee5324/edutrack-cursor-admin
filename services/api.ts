@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -57,6 +57,7 @@ import {
   sandboxSaveLanguageElectiveRoster,
   sandboxGetLanguageOptions,
   sandboxSaveLanguageOptions,
+  sandboxGetCalendarSettings,
 } from './sandboxStore';
 
 const GAS_API_URL = import.meta.env.VITE_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbzWyYHtUbAMIFGBtMtXGvdXuAIiml1pAdf0qKykQ3vzCY5QFdAsMjCoyZ_Znam7oxRC/exec';
@@ -771,6 +772,25 @@ export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveR
       };
     })
     .sort((a, b) => parseInt(b.academicYear, 10) - parseInt(a.academicYear, 10));
+}
+
+// --- 學期／放假日設定 (點名單用) ---
+const calendarSettingsDocId = (academicYear: string, semester: string) => `${academicYear}_${semester}`;
+
+export async function getCalendarSettings(academicYear: string, semester: string): Promise<CalendarSettings | null> {
+  if (isSandbox()) return sandboxGetCalendarSettings(academicYear, semester);
+  const db = getDb();
+  if (!db) return null;
+  const docSnap = await getDoc(doc(db, COLLECTIONS.CALENDAR_SETTINGS, calendarSettingsDocId(academicYear, semester)));
+  if (!docSnap.exists()) return null;
+  const data = docSnap.data();
+  return {
+    academicYear: String(data.academicYear ?? academicYear),
+    semester: String(data.semester ?? semester),
+    startDate: data.startDate != null ? String(data.startDate) : undefined,
+    endDate: data.endDate != null ? String(data.endDate) : undefined,
+    holidays: Array.isArray(data.holidays) ? data.holidays.map((h: any) => String(h)) : undefined,
+  };
 }
 
 /** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆）；姓名以 trim 比對。 */
