@@ -439,22 +439,19 @@ const AttendanceSheetPage: React.FC = () => {
               </p>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <label className="text-sm text-slate-700">星期：</label>
-                <select value={genDayOfWeek} onChange={(e) => setGenDayOfWeek(e.target.value)} className="border rounded p-1 text-sm">
+                <select value={['1','2','3','4','5'].includes(genDayOfWeek) ? genDayOfWeek : '1'} onChange={(e) => setGenDayOfWeek(e.target.value)} className="border rounded p-1 text-sm">
                   <option value="1">週一</option>
                   <option value="2">週二</option>
                   <option value="3">週三</option>
                   <option value="4">週四</option>
                   <option value="5">週五</option>
-                  <option value="6">週六</option>
-                  <option value="0">週日</option>
                 </select>
                 <button
                   type="button"
                   onClick={handleGenerateDates}
-                  disabled={!calendarSettings?.startDate || !calendarSettings?.endDate}
-                  className="px-3 py-1.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700"
                 >
-                  依學期生成（排除放假日）
+                  生成日期
                 </button>
               </div>
               {calendarSettings?.startDate && calendarSettings?.endDate && (
