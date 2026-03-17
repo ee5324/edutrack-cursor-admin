@@ -781,15 +781,46 @@ export async function getCalendarSettings(academicYear: string, semester: string
   if (isSandbox()) return sandboxGetCalendarSettings(academicYear, semester);
   const db = getDb();
   if (!db) return null;
+
+  // 1) 優先讀取本系統的前綴集合：edutrack_calendar_settings/{學年_學期}
   const docSnap = await getDoc(doc(db, COLLECTIONS.CALENDAR_SETTINGS, calendarSettingsDocId(academicYear, semester)));
-  if (!docSnap.exists()) return null;
-  const data = docSnap.data();
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    return {
+      academicYear: String(data.academicYear ?? academicYear),
+      semester: String(data.semester ?? semester),
+      startDate: data.startDate != null ? String(data.startDate) : undefined,
+      endDate: data.endDate != null ? String(data.endDate) : undefined,
+      holidays: Array.isArray(data.holidays) ? data.holidays.map((h: any) => String(h)) : undefined,
+    };
+  }
+
+  // 2) 相容既有主系統：system/settings（semesterStart, semesterEnd）與 system/holidays
+  //    注意：此路徑不帶 edutrack_ 前綴，與本系統其他集合不同。
+  const settingsSnap = await getDoc(doc(db, 'system', 'settings'));
+  if (!settingsSnap.exists()) return null;
+  const settings = settingsSnap.data() as any;
+  const startDate = settings?.semesterStart != null ? String(settings.semesterStart) : undefined;
+  const endDate = settings?.semesterEnd != null ? String(settings.semesterEnd) : undefined;
+
+  let holidays: string[] | undefined = undefined;
+  const holidaysSnap = await getDoc(doc(db, 'system', 'holidays'));
+  if (holidaysSnap.exists()) {
+    const h = holidaysSnap.data() as any;
+    if (Array.isArray(h?.holidays)) holidays = h.holidays.map((x: any) => String(x));
+    else if (Array.isArray(h?.dates)) holidays = h.dates.map((x: any) => String(x));
+    else if (h && typeof h === 'object') {
+      // 可能以 { "2026-02-28": true, ... } 或 { "2026-02-28": "和平紀念日", ... } 形式存放
+      holidays = Object.keys(h).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k));
+    }
+  }
+
   return {
-    academicYear: String(data.academicYear ?? academicYear),
-    semester: String(data.semester ?? semester),
-    startDate: data.startDate != null ? String(data.startDate) : undefined,
-    endDate: data.endDate != null ? String(data.endDate) : undefined,
-    holidays: Array.isArray(data.holidays) ? data.holidays.map((h: any) => String(h)) : undefined,
+    academicYear: String(academicYear),
+    semester: String(semester),
+    startDate,
+    endDate,
+    holidays,
   };
 }
 
