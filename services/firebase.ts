@@ -87,6 +87,12 @@ export const COLLECTIONS = {
   SYSTEM: `${COLLECTION_PREFIX}system`,
   /** 學期／放假日設定（點名單用），doc id = 學年_學期，如 114_下學期 */
   CALENDAR_SETTINGS: `${COLLECTION_PREFIX}calendar_settings`,
+  /** 段考提報：活動 */
+  EXAM_CAMPAIGNS: `${COLLECTION_PREFIX}exam_campaigns`,
+  /** 段考提報：提報資料（活動×班級，一班一筆） */
+  EXAM_SUBMISSIONS: `${COLLECTION_PREFIX}exam_submissions`,
+  /** 段考提報：獎項設定（單一 doc exam_awards） */
+  EXAM_SYSTEM: `${COLLECTION_PREFIX}exam_system`,
 } as const;
 
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */

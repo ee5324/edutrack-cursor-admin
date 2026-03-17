@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -106,6 +106,10 @@ const store = {
   languageElective: {} as Record<string, LanguageElectiveRosterDoc>,
   systemSettings: { languageOptions: [] as string[] },
   calendarSettings: {} as Record<string, CalendarSettings>,
+  examCampaigns: [] as ExamCampaign[],
+  examAwardsConfig: { categories: [] } as ExamAwardsConfig,
+  examSubmitAllowedUsers: {} as Record<string, ExamSubmitAllowedUser>,
+  examSubmissions: {} as Record<string, ExamSubmission>,
 };
 
 // --- Courses & Students ---
@@ -364,6 +368,64 @@ export function sandboxGetCalendarSettings(academicYear: string, semester: strin
   const key = `${academicYear}_${semester}`;
   const doc = store.calendarSettings[key];
   return Promise.resolve(doc ?? null);
+}
+
+// --- 段考提報（Sandbox stubs）---
+export function sandboxGetExamCampaigns(): Promise<ExamCampaign[]> {
+  return Promise.resolve([...store.examCampaigns]);
+}
+
+export function sandboxCreateExamCampaign(payload: Omit<ExamCampaign, 'id'>): Promise<ExamCampaign> {
+  const row: ExamCampaign = { id: uid(), ...payload, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString() };
+  store.examCampaigns.unshift(row);
+  return Promise.resolve(row);
+}
+
+export function sandboxUpdateExamCampaign(id: string, patch: Partial<ExamCampaign>): Promise<void> {
+  store.examCampaigns = store.examCampaigns.map((c) => (c.id === id ? ({ ...c, ...patch, id, updatedAt: new Date().toISOString() } as ExamCampaign) : c));
+  return Promise.resolve();
+}
+
+export function sandboxGetExamAwardsConfig(): Promise<ExamAwardsConfig> {
+  return Promise.resolve(store.examAwardsConfig);
+}
+
+export function sandboxSaveExamAwardsConfig(config: ExamAwardsConfig): Promise<void> {
+  store.examAwardsConfig = { ...config, updatedAt: new Date().toISOString() };
+  return Promise.resolve();
+}
+
+export function sandboxGetExamSubmitAllowedUsers(): Promise<ExamSubmitAllowedUser[]> {
+  return Promise.resolve(Object.values(store.examSubmitAllowedUsers));
+}
+
+export function sandboxSetExamSubmitAllowedUser(email: string, patch: Partial<ExamSubmitAllowedUser>): Promise<void> {
+  const key = (email ?? '').trim().toLowerCase();
+  const prev = store.examSubmitAllowedUsers[key] ?? { email: key, enabled: true };
+  store.examSubmitAllowedUsers[key] = { ...prev, ...patch, email: key, updatedAt: new Date().toISOString() };
+  return Promise.resolve();
+}
+
+export function sandboxGetExamSubmitAllowedUser(email: string): Promise<ExamSubmitAllowedUser | null> {
+  const key = (email ?? '').trim().toLowerCase();
+  return Promise.resolve(store.examSubmitAllowedUsers[key] ?? null);
+}
+
+export function sandboxGetExamSubmissions(campaignId: string): Promise<ExamSubmission[]> {
+  const list = Object.values(store.examSubmissions).filter((s) => s.campaignId === campaignId);
+  return Promise.resolve(list.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? '')));
+}
+
+export function sandboxSaveExamSubmission(submission: ExamSubmission): Promise<void> {
+  store.examSubmissions[submission.id] = { ...submission, updatedAt: new Date().toISOString() };
+  return Promise.resolve();
+}
+
+export function sandboxUnlockExamSubmission(id: string, unlockedByEmail: string): Promise<void> {
+  const prev = store.examSubmissions[id];
+  if (!prev) return Promise.resolve();
+  store.examSubmissions[id] = { ...prev, locked: false, unlockedByEmail, unlockedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  return Promise.resolve();
 }
 
 // --- 系統設定（選修語言類別）---

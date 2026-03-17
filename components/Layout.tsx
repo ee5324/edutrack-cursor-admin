@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, FlaskConical, LogOut, Map, FileText, ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award } from 'lucide-react';
 import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -48,6 +48,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
     { id: 'student-roster', label: '學生名單', icon: Users },
     { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
+    { id: 'exam-submissions', label: '段考提報', icon: Award },
     { id: 'vendors', label: '廠商管理', icon: Store },
     { id: 'exam-papers', label: '考卷存檔', icon: FileText },
     { id: 'archive', label: '事項列檔', icon: Archive, badge: archiveCount },

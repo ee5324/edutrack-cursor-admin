@@ -108,6 +108,70 @@ export interface CalendarSettings {
   holidays?: string[];
 }
 
+// --- 段考提報（導師）---
+
+export interface ExamAwardItem {
+  id: string; // 唯一 key（如 chi, math, total）
+  label: string; // 顯示名稱
+}
+
+export interface ExamAwardCategory {
+  id: 'excellent' | 'improved' | string;
+  label: string; // 優異 / 進步
+  items: ExamAwardItem[];
+}
+
+/** 段考獎項設定（系統設定） */
+export interface ExamAwardsConfig {
+  categories: ExamAwardCategory[];
+  updatedAt?: string;
+}
+
+/** 一次段考活動 */
+export interface ExamCampaign {
+  id: string;
+  title: string; // 例如：114下 第1次段考
+  academicYear: string;
+  semester: string; // 上學期 / 下學期
+  examNo: string; // 第幾次段考（字串方便：1/2/3...）
+  lockedByDefault: boolean;
+  closeAt?: string | null; // ISO 或 YYYY-MM-DD，僅顯示用（鎖定仍以 locked 控制）
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 對外填報白名單（導師） */
+export interface ExamSubmitAllowedUser {
+  email: string;
+  enabled: boolean;
+  displayName?: string | null;
+  note?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ExamSubmissionStudent {
+  className: string;
+  seat: string;
+  name: string;
+  /** 例如 ["excellent:chi", "improved:math"] */
+  awards: string[];
+}
+
+/** 一班一筆提報（同班以最新覆蓋），可鎖定/解鎖 */
+export interface ExamSubmission {
+  id: string; // doc id
+  campaignId: string;
+  className: string;
+  students: ExamSubmissionStudent[];
+  locked: boolean;
+  submittedByEmail: string;
+  submittedAt: string;
+  unlockedByEmail?: string | null;
+  unlockedAt?: string | null;
+  updatedAt?: string;
+}
+
 // 聯絡人資訊
 export interface Contact {
   name: string;

@@ -11,6 +11,8 @@ import AwardGenerator from './AwardGenerator';
 import VendorManager from './VendorManager';
 import ExamPapersTab from './components/ExamPapersTab';
 import ArchiveManager from './ArchiveManager';
+import ExamSubmissionsTab from './components/ExamSubmissionsTab';
+import ExamSubmitPublicPage from './components/ExamSubmitPublicPage';
 import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { setupSystem, getArchiveTasks, getLanguageElectiveRoster, getAllLanguageElectiveRosters, buildNameToLanguageFromRosters, saveLanguageElectiveRoster, getLanguageOptions, saveLanguageOptionsToFirebase, mergeLanguageOptionsFromRosters } from './services/api';
@@ -506,6 +508,11 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
 };
 
 const App: React.FC = () => {
+  // 對外填報頁（不走主系統 Layout / edutrack 白名單）
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/exam-submit')) {
+    return <ExamSubmitPublicPage />;
+  }
+
   const [activeTab, setActiveTab] = useState('calendar');
   const [archiveCount, setArchiveCount] = useState(0);
   const [user, setUser] = useState<User | null>(null);
@@ -609,6 +616,8 @@ const App: React.FC = () => {
         return <VendorManager />;
       case 'exam-papers':
         return <ExamPapersTab user={user} />;
+      case 'exam-submissions':
+        return <ExamSubmissionsTab currentAccess={accessUser} currentUserEmail={user?.email ?? null} />;
       case 'archive':
         return <ArchiveManager onTasksChange={setArchiveCount} />;
       case 'settings':

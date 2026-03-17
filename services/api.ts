@@ -58,7 +58,19 @@ import {
   sandboxGetLanguageOptions,
   sandboxSaveLanguageOptions,
   sandboxGetCalendarSettings,
+  sandboxGetExamCampaigns,
+  sandboxCreateExamCampaign,
+  sandboxUpdateExamCampaign,
+  sandboxGetExamAwardsConfig,
+  sandboxSaveExamAwardsConfig,
+  sandboxGetExamSubmitAllowedUsers,
+  sandboxSetExamSubmitAllowedUser,
+  sandboxGetExamSubmitAllowedUser,
+  sandboxGetExamSubmissions,
+  sandboxSaveExamSubmission,
+  sandboxUnlockExamSubmission,
 } from './sandboxStore';
+import type { ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission } from '../types';
 
 const GAS_API_URL = import.meta.env.VITE_GAS_API_URL || 'https://script.google.com/macros/s/AKfycbzWyYHtUbAMIFGBtMtXGvdXuAIiml1pAdf0qKykQ3vzCY5QFdAsMjCoyZ_Znam7oxRC/exec';
 
@@ -822,6 +834,188 @@ export async function getCalendarSettings(academicYear: string, semester: string
     endDate,
     holidays,
   };
+}
+
+// --- 段考提報（活動/獎項/白名單/提報）---
+
+const EXAM_AWARDS_DOC_ID = 'exam_awards';
+
+export async function getExamAwardsConfig(): Promise<ExamAwardsConfig> {
+  if (isSandbox()) return sandboxGetExamAwardsConfig();
+  const db = getDb();
+  if (!db) return { categories: [] };
+  const snap = await getDoc(doc(db, COLLECTIONS.EXAM_SYSTEM, EXAM_AWARDS_DOC_ID));
+  const data = snap.exists() ? (snap.data() as any) : {};
+  return {
+    categories: Array.isArray(data?.categories) ? data.categories : [],
+    updatedAt: data?.updatedAt?.toDate?.()?.toISOString?.() ?? data?.updatedAt,
+  };
+}
+
+export async function saveExamAwardsConfig(config: ExamAwardsConfig): Promise<void> {
+  if (isSandbox()) return sandboxSaveExamAwardsConfig(config);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  await setDoc(doc(db, COLLECTIONS.EXAM_SYSTEM, EXAM_AWARDS_DOC_ID), { ...config, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function getExamCampaigns(): Promise<ExamCampaign[]> {
+  if (isSandbox()) return sandboxGetExamCampaigns();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(query(collection(db, COLLECTIONS.EXAM_CAMPAIGNS), orderBy('updatedAt', 'desc')));
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      title: String(data.title ?? ''),
+      academicYear: String(data.academicYear ?? ''),
+      semester: String(data.semester ?? ''),
+      examNo: String(data.examNo ?? ''),
+      lockedByDefault: data.lockedByDefault === true,
+      closeAt: data.closeAt ?? null,
+      createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt,
+    } as ExamCampaign;
+  });
+}
+
+export async function createExamCampaign(payload: Omit<ExamCampaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<ExamCampaign> {
+  if (isSandbox()) return sandboxCreateExamCampaign(payload as any);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const ref = doc(collection(db, COLLECTIONS.EXAM_CAMPAIGNS));
+  const row = {
+    title: payload.title ?? '',
+    academicYear: payload.academicYear ?? '',
+    semester: payload.semester ?? '',
+    examNo: payload.examNo ?? '',
+    lockedByDefault: payload.lockedByDefault === true,
+    closeAt: payload.closeAt ?? null,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(ref, row);
+  return { id: ref.id, ...payload } as ExamCampaign;
+}
+
+export async function updateExamCampaign(id: string, patch: Partial<ExamCampaign>): Promise<void> {
+  if (isSandbox()) return sandboxUpdateExamCampaign(id, patch);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const clean: any = { ...patch, updatedAt: serverTimestamp() };
+  delete clean.id;
+  delete clean.createdAt;
+  await updateDoc(doc(db, COLLECTIONS.EXAM_CAMPAIGNS, id), clean);
+}
+
+export async function getExamSubmitAllowedUsers(): Promise<ExamSubmitAllowedUser[]> {
+  if (isSandbox()) return sandboxGetExamSubmitAllowedUsers();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(query(collection(db, 'exam_submit_allowed_users'), orderBy('updatedAt', 'desc')));
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      email: d.id,
+      enabled: data.enabled === true,
+      displayName: data.displayName ?? null,
+      note: data.note ?? null,
+      createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt,
+    } as ExamSubmitAllowedUser;
+  });
+}
+
+export async function getExamSubmitAllowedUser(email: string): Promise<ExamSubmitAllowedUser | null> {
+  if (isSandbox()) return sandboxGetExamSubmitAllowedUser(email);
+  const db = getDb();
+  if (!db) return null;
+  const id = (email ?? '').trim().toLowerCase();
+  const snap = await getDoc(doc(db, 'exam_submit_allowed_users', id));
+  if (!snap.exists()) return null;
+  const data = snap.data() as any;
+  return {
+    email: id,
+    enabled: data.enabled === true,
+    displayName: data.displayName ?? null,
+    note: data.note ?? null,
+    createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt,
+    updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt,
+  } as ExamSubmitAllowedUser;
+}
+
+export async function setExamSubmitAllowedUser(email: string, patch: Partial<ExamSubmitAllowedUser>): Promise<void> {
+  if (isSandbox()) return sandboxSetExamSubmitAllowedUser(email, patch);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = (email ?? '').trim().toLowerCase();
+  const ref = doc(db, 'exam_submit_allowed_users', id);
+  const row: any = {
+    enabled: patch.enabled ?? true,
+    displayName: patch.displayName ?? null,
+    note: patch.note ?? null,
+    updatedAt: serverTimestamp(),
+  };
+  // createdAt 僅在首次寫入時補
+  await setDoc(ref, { ...row, createdAt: serverTimestamp() }, { merge: true });
+}
+
+const examSubmissionId = (campaignId: string, className: string) => `${campaignId}_${String(className ?? '').trim()}`;
+
+export async function getExamSubmissions(campaignId: string): Promise<ExamSubmission[]> {
+  if (isSandbox()) return sandboxGetExamSubmissions(campaignId);
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(query(collection(db, COLLECTIONS.EXAM_SUBMISSIONS), where('campaignId', '==', campaignId), orderBy('submittedAt', 'desc')));
+  return snap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      campaignId: String(data.campaignId ?? ''),
+      className: String(data.className ?? ''),
+      students: Array.isArray(data.students) ? data.students : [],
+      locked: data.locked === true,
+      submittedByEmail: String(data.submittedByEmail ?? ''),
+      submittedAt: data.submittedAt?.toDate?.()?.toISOString?.() ?? data.submittedAt ?? '',
+      unlockedByEmail: data.unlockedByEmail ?? null,
+      unlockedAt: data.unlockedAt?.toDate?.()?.toISOString?.() ?? data.unlockedAt ?? null,
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt,
+    } as ExamSubmission;
+  });
+}
+
+export async function saveExamSubmission(payload: Omit<ExamSubmission, 'id' | 'updatedAt'>): Promise<void> {
+  if (isSandbox()) return sandboxSaveExamSubmission({ ...(payload as any), id: examSubmissionId(payload.campaignId, payload.className) });
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = examSubmissionId(payload.campaignId, payload.className);
+  const ref = doc(db, COLLECTIONS.EXAM_SUBMISSIONS, id);
+  await setDoc(
+    ref,
+    {
+      campaignId: payload.campaignId,
+      className: payload.className,
+      students: payload.students ?? [],
+      locked: payload.locked === true,
+      submittedByEmail: payload.submittedByEmail,
+      submittedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export async function unlockExamSubmission(id: string, unlockedByEmail: string): Promise<void> {
+  if (isSandbox()) return sandboxUnlockExamSubmission(id, unlockedByEmail);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  await updateDoc(doc(db, COLLECTIONS.EXAM_SUBMISSIONS, id), {
+    locked: false,
+    unlockedByEmail,
+    unlockedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆）；姓名以 trim 比對。 */
