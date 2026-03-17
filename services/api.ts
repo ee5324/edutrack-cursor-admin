@@ -919,6 +919,8 @@ export async function getExamSubmitAllowedUsers(): Promise<ExamSubmitAllowedUser
     return {
       email: d.id,
       enabled: data.enabled === true,
+      className: data.className ?? null,
+      teacherName: data.teacherName ?? null,
       displayName: data.displayName ?? null,
       note: data.note ?? null,
       createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt,
@@ -938,6 +940,8 @@ export async function getExamSubmitAllowedUser(email: string): Promise<ExamSubmi
   return {
     email: id,
     enabled: data.enabled === true,
+    className: data.className ?? null,
+    teacherName: data.teacherName ?? null,
     displayName: data.displayName ?? null,
     note: data.note ?? null,
     createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt,
@@ -953,6 +957,8 @@ export async function setExamSubmitAllowedUser(email: string, patch: Partial<Exa
   const ref = doc(db, 'exam_submit_allowed_users', id);
   const row: any = {
     enabled: patch.enabled ?? true,
+    className: patch.className ?? null,
+    teacherName: patch.teacherName ?? null,
     displayName: patch.displayName ?? null,
     note: patch.note ?? null,
     updatedAt: serverTimestamp(),

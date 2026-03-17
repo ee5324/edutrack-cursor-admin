@@ -144,6 +144,10 @@ export interface ExamCampaign {
 export interface ExamSubmitAllowedUser {
   email: string;
   enabled: boolean;
+  /** 導師所屬班級（管理端維護；對外頁可用於顯示/查詢） */
+  className?: string | null;
+  /** 導師姓名（管理端維護；對外頁可用於顯示/查詢） */
+  teacherName?: string | null;
   displayName?: string | null;
   note?: string | null;
   createdAt?: string;

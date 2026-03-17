@@ -219,6 +219,33 @@ const ExamSubmitPublicPage: React.FC = () => {
           </button>
         </div>
 
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <details className="group">
+            <summary className="cursor-pointer select-none flex items-center justify-between gap-3">
+              <span className="font-semibold text-slate-800">使用說明（可摺疊）</span>
+              <span className="text-xs text-slate-500 group-open:hidden">展開</span>
+              <span className="text-xs text-slate-500 hidden group-open:inline">收合</span>
+            </summary>
+            <div className="mt-3 text-sm text-slate-700 space-y-2">
+              <p>
+                <span className="font-semibold">送出並鎖定</span> 的意思是：你按下送出後，系統會把本班本次段考的提報資料標記為
+                <span className="font-mono mx-1">locked=true</span>，避免反覆修改造成資料混亂。
+              </p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>
+                  <span className="font-semibold">要修改怎麼辦？</span> 請聯絡管理者在管理端「提報總覽」按 <span className="font-semibold">解鎖</span>，你才可以重新送出更新資料。
+                </li>
+                <li>
+                  <span className="font-semibold">同一班重複提報</span>：以 <span className="font-semibold">最後一次送出時間</span> 為準（會記錄送出者 Email 與時間）。
+                </li>
+                <li>
+                  <span className="font-semibold">同一學生可多個獎項</span>：在學生卡片內可複選（優異 / 進步底下的細項皆可勾選）。
+                </li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
         {(err || msg) && (
           <div className={`rounded-lg border p-3 text-sm ${err ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
             {err ?? msg}

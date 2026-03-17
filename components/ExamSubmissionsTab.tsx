@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw, Unlock, Save, UserPlus, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, Unlock, Save, UserPlus, Trash2, ExternalLink, Copy } from 'lucide-react';
 import type { AllowedUser, ExamAwardsConfig, ExamCampaign, ExamSubmitAllowedUser, ExamSubmission } from '../types';
 import {
   createExamCampaign,
@@ -43,6 +43,9 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
 
   const [whitelist, setWhitelist] = useState<ExamSubmitAllowedUser[]>([]);
   const [newWhitelistEmail, setNewWhitelistEmail] = useState('');
+  const [newWhitelistClassName, setNewWhitelistClassName] = useState('');
+  const [newWhitelistTeacherName, setNewWhitelistTeacherName] = useState('');
+  const [batchWhitelistText, setBatchWhitelistText] = useState('');
   const [whitelistLoading, setWhitelistLoading] = useState(false);
 
   const [submissions, setSubmissions] = useState<ExamSubmission[]>([]);
@@ -50,6 +53,21 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
 
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const publicSubmitUrl = typeof window !== 'undefined' ? `${window.location.origin}/exam-submit` : '';
+  const openPublicUrl = () => {
+    if (publicSubmitUrl) window.open(publicSubmitUrl, '_blank', 'noopener,noreferrer');
+  };
+  const copyPublicUrl = async () => {
+    if (!publicSubmitUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicSubmitUrl);
+      setMsg('已複製對外填報網址');
+      setErr(null);
+    } catch {
+      setErr('無法複製，請手動複製網址');
+    }
+  };
 
   const reloadCampaigns = async () => {
     setCampaignLoading(true);
@@ -169,12 +187,54 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
     setErr(null);
     setMsg(null);
     try {
-      await setExamSubmitAllowedUser(email, { enabled: true });
+      await setExamSubmitAllowedUser(email, {
+        enabled: true,
+        className: newWhitelistClassName.trim() || null,
+        teacherName: newWhitelistTeacherName.trim() || null,
+      });
       setNewWhitelistEmail('');
+      setNewWhitelistClassName('');
+      setNewWhitelistTeacherName('');
       await reloadWhitelist();
       setMsg('已加入白名單');
     } catch (e: any) {
       setErr(e?.message || '加入白名單失敗');
+    }
+  };
+
+  const addWhitelistBatch = async () => {
+    if (!isAdmin) return;
+    const raw = batchWhitelistText.trim();
+    if (!raw) return;
+    setErr(null);
+    setMsg(null);
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const rows = lines
+      .map((line) => {
+        // 支援：email,班級,導師 或 email\t班級\t導師
+        const parts = line.split(/\s*,\s*|\t+/g).map((x) => x.trim()).filter(Boolean);
+        const email = (parts[0] ?? '').toLowerCase();
+        if (!email) return null;
+        const className = parts[1] ?? '';
+        const teacherName = parts[2] ?? '';
+        return { email, className, teacherName };
+      })
+      .filter(Boolean) as { email: string; className: string; teacherName: string }[];
+
+    if (rows.length === 0) return;
+    try {
+      for (const r of rows) {
+        await setExamSubmitAllowedUser(r.email, {
+          enabled: true,
+          className: r.className.trim() || null,
+          teacherName: r.teacherName.trim() || null,
+        });
+      }
+      setBatchWhitelistText('');
+      await reloadWhitelist();
+      setMsg(`已批次加入白名單（${rows.length} 筆）`);
+    } catch (e: any) {
+      setErr(e?.message || '批次加入白名單失敗');
     }
   };
 
@@ -209,18 +269,40 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
           <h2 className="text-2xl font-bold text-slate-800">段考名單提報</h2>
           <p className="text-sm text-slate-500 mt-1">管理段考活動、獎項細項、對外填報白名單，以及各班提報與解鎖。</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            reloadCampaigns();
-            reloadAwardsConfig();
-            if (isAdmin) reloadWhitelist();
-            if (selectedCampaignId) reloadSubmissions(selectedCampaignId);
-          }}
-          className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm inline-flex items-center gap-2"
-        >
-          <RefreshCw size={16} /> 重新整理
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {publicSubmitUrl && (
+            <>
+              <button
+                type="button"
+                onClick={openPublicUrl}
+                className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm inline-flex items-center gap-2"
+                title={publicSubmitUrl}
+              >
+                <ExternalLink size={16} /> 開啟對外網址
+              </button>
+              <button
+                type="button"
+                onClick={copyPublicUrl}
+                className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm inline-flex items-center gap-2"
+                title={publicSubmitUrl}
+              >
+                <Copy size={16} /> 複製網址
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              reloadCampaigns();
+              reloadAwardsConfig();
+              if (isAdmin) reloadWhitelist();
+              if (selectedCampaignId) reloadSubmissions(selectedCampaignId);
+            }}
+            className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm inline-flex items-center gap-2"
+          >
+            <RefreshCw size={16} /> 重新整理
+          </button>
+        </div>
       </div>
 
       {(err || msg) && (
@@ -361,17 +443,36 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
           <p className="text-xs text-slate-500">（僅管理者可管理白名單）</p>
         ) : (
           <>
-            <div className="flex flex-wrap gap-2 items-center">
-              <input className="border rounded px-2 py-1.5 text-sm w-80 max-w-full" placeholder="teacher@example.com" value={newWhitelistEmail} onChange={(e) => setNewWhitelistEmail(e.target.value)} />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center">
+              <input className="border rounded px-2 py-1.5 text-sm" placeholder="teacher@example.com" value={newWhitelistEmail} onChange={(e) => setNewWhitelistEmail(e.target.value)} />
+              <input className="border rounded px-2 py-1.5 text-sm" placeholder="班級（例：301）" value={newWhitelistClassName} onChange={(e) => setNewWhitelistClassName(e.target.value)} />
+              <input className="border rounded px-2 py-1.5 text-sm" placeholder="導師姓名（例：王小明）" value={newWhitelistTeacherName} onChange={(e) => setNewWhitelistTeacherName(e.target.value)} />
               <button type="button" onClick={addWhitelist} className="px-3 py-1.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 inline-flex items-center gap-2">
                 <UserPlus size={16} /> 加入
               </button>
             </div>
+
+            <div className="border rounded-lg p-3 bg-slate-50 space-y-2">
+              <div className="text-sm font-medium text-slate-700">批次新增</div>
+              <div className="text-xs text-slate-600">
+                每行一筆，格式：<span className="font-mono">email,班級,導師姓名</span>（也支援 tab 分隔）。例如：
+                <span className="font-mono ml-2">t1@example.com,301,王老師</span>
+              </div>
+              <textarea className="w-full border rounded p-2 text-sm min-h-[120px]" value={batchWhitelistText} onChange={(e) => setBatchWhitelistText(e.target.value)} placeholder="teacher1@example.com,301,王老師&#10;teacher2@example.com,302,李老師" />
+              <div className="flex items-center justify-end">
+                <button type="button" onClick={addWhitelistBatch} className="px-3 py-1.5 rounded text-sm bg-slate-800 text-white hover:bg-slate-900">
+                  批次加入
+                </button>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm border border-slate-200 rounded-lg">
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="px-3 py-2 text-left">Email</th>
+                    <th className="px-3 py-2 text-left">班級</th>
+                    <th className="px-3 py-2 text-left">導師</th>
                     <th className="px-3 py-2 text-left">啟用</th>
                   </tr>
                 </thead>
@@ -379,6 +480,8 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
                   {whitelist.map((u) => (
                     <tr key={u.email}>
                       <td className="px-3 py-2 font-mono text-xs">{u.email}</td>
+                      <td className="px-3 py-2">{u.className || '-'}</td>
+                      <td className="px-3 py-2">{u.teacherName || u.displayName || '-'}</td>
                       <td className="px-3 py-2">
                         <button
                           type="button"
@@ -392,7 +495,7 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
                   ))}
                   {whitelist.length === 0 && (
                     <tr>
-                      <td className="px-3 py-3 text-slate-500 text-sm" colSpan={2}>
+                      <td className="px-3 py-3 text-slate-500 text-sm" colSpan={4}>
                         尚無白名單
                       </td>
                     </tr>
