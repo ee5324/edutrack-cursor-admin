@@ -18,6 +18,16 @@ function formatDateMMDD(d: Date): string {
   return `${mm}/${dd}`;
 }
 
+/** 上課時間顯示用：去掉「-早」後綴，例如 W3-早 → W3 */
+function formatClassTimeForDisplay(classTime: string): string {
+  return (classTime ?? '').replace(/-早$/, '');
+}
+
+/** 是否為「每週時間」顯示（週一～週日），合併表用 */
+function isWeeklyTimeLabel(classTime: string): boolean {
+  return /^週[一二三四五六日]$/.test((classTime ?? '').trim());
+}
+
 interface ProcessedStudent extends Student {
   rowSpan: number;
   isGray: boolean;
@@ -94,7 +104,7 @@ function buildOneSheet(data: AttendanceTableData): string {
         <div class="sheet-teacher">授課教師：${esc(instructorName)}</div>
       </div>
       <div class="sheet-info">
-        <div>上課時間：${esc(classTime)}</div>
+        <div>${isWeeklyTimeLabel(classTime) ? '每週時間' : '上課時間'}：${esc(formatClassTimeForDisplay(classTime))}</div>
         <div>上課地點：${esc(location)}</div>
       </div>
       <table class="sheet-table">
@@ -185,62 +195,95 @@ function getLanguageType(courseName: string): string {
   return s.replace(/\s*[\dA-Za-z]+\s*$/, '').trim() || s;
 }
 
+/** 由上課時間字串解析星期幾（週一=1 … 週日=0），無法解析時回傳 -1 */
+function getDayOfWeekFromClassTime(classTime: string): number {
+  const t = (classTime ?? '').trim();
+  if (/週一/.test(t)) return 1;
+  if (/週二/.test(t)) return 2;
+  if (/週三/.test(t)) return 3;
+  if (/週四/.test(t)) return 4;
+  if (/週五/.test(t)) return 5;
+  if (/週六/.test(t)) return 6;
+  if (/週日/.test(t)) return 0;
+  return -1;
+}
+
+const DAY_NAMES: Record<number, string> = { 0: '週日', 1: '週一', 2: '週二', 3: '週三', 4: '週四', 5: '週五', 6: '週六' };
+
 /**
- * 同一語言別且同一老師：依「同一天」合併點名表，每日期一頁、該日所有班級學生合併列出
+ * 同一週幾、同一位老師、不同節的點名表合併為「多表合一」：一頁一表，所有該週幾的日期為欄，學生依「節」分組（晨光時間、第1節…）。
+ * 不同星期幾或不同老師不合併。
  */
 export function mergeSheetsByLanguageAndTeacher(sheets: AttendanceTableData[]): AttendanceTableData[] {
   if (sheets.length === 0) return [];
-  const key = (s: AttendanceTableData) => `${getLanguageType(s.courseName)}|${(s.instructorName ?? '').trim()}`;
+  const key = (s: AttendanceTableData) => {
+    const day = getDayOfWeekFromClassTime(s.classTime ?? '');
+    return `${getLanguageType(s.courseName)}|${(s.instructorName ?? '').trim()}|${day}`;
+  };
   const groups = new Map<string, AttendanceTableData[]>();
   for (const s of sheets) {
+    const d = getDayOfWeekFromClassTime(s.classTime ?? '');
+    if (d < 0) {
+      const singleKey = `single|${s.courseName}|${s.classTime}`;
+      if (!groups.has(singleKey)) groups.set(singleKey, []);
+      groups.get(singleKey)!.push(s);
+      continue;
+    }
     const k = key(s);
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k)!.push(s);
   }
   const result: AttendanceTableData[] = [];
-  for (const [, groupSheets] of groups) {
+  for (const [groupKey, groupSheets] of groups) {
+    if (groupKey.startsWith('single')) {
+      for (const sh of groupSheets) result.push(sh);
+      continue;
+    }
     const first = groupSheets[0];
-    if (groupSheets.length === 1) {
+    const groupDayOfWeek = getDayOfWeekFromClassTime(first.classTime ?? '');
+    if (groupSheets.length === 1 && groupDayOfWeek >= 0) {
       result.push(first);
       continue;
     }
     const allDates = Array.from(
       new Set(groupSheets.flatMap((s) => s.dates.map((d) => d.getTime())))
     ).sort((a, b) => a - b);
-    const datesList = allDates.map((t) => new Date(t));
-    const languageLabel = `${getLanguageType(first.courseName)}（${first.instructorName}）`;
-    for (const date of datesList) {
-      const combined: Student[] = [];
-      for (const sheet of groupSheets) {
-        for (const st of sheet.students) {
-          combined.push({
-            ...st,
-            period: st.period ?? '第一節',
-          });
-        }
+    const datesList = allDates
+      .map((t) => new Date(t))
+      .filter((d) => d.getDay() === groupDayOfWeek);
+    const languageLabel = getLanguageType(first.courseName);
+    const combined: Student[] = [];
+    for (const sheet of groupSheets) {
+      for (const st of sheet.students) {
+        combined.push({
+          ...st,
+          period: st.period ?? '第一節',
+        });
       }
-      combined.sort((a, b) => {
-        const c = (a.className ?? '').localeCompare(b.className ?? '', undefined, { numeric: true });
-        return c !== 0 ? c : (parseInt(a.id, 10) || 0) - (parseInt(b.id, 10) || 0);
-      });
-      result.push({
-        academicYear: first.academicYear,
-        semester: first.semester,
-        courseName: languageLabel,
-        instructorName: first.instructorName,
-        classTime: '多班',
-        location: first.location,
-        dates: [date],
-        students: combined.map((st, i) => ({ ...st, id: String(i + 1) })),
-      });
     }
+    combined.sort((a, b) => {
+      const p = (a.period ?? '').localeCompare(b.period ?? '');
+      if (p !== 0) return p;
+      const c = (a.className ?? '').localeCompare(b.className ?? '', undefined, { numeric: true });
+      return c !== 0 ? c : (parseInt(a.id, 10) || 0) - (parseInt(b.id, 10) || 0);
+    });
+    result.push({
+      academicYear: first.academicYear,
+      semester: first.semester,
+      courseName: languageLabel,
+      instructorName: first.instructorName,
+      classTime: DAY_NAMES[groupDayOfWeek] ?? '多班',
+      location: first.location ?? '',
+      dates: datesList,
+      students: combined.map((st, i) => ({ ...st, id: String(i + 1) })),
+    });
   }
   return result;
 }
 
 /**
  * 產生完整列印用 HTML（含 DOCTYPE、head 內嵌 CSS、body 內多個 .notice-page）
- * 若傳入多張點名表，會先依「同一語言別且同一老師」合併同一天再列印
+ * 僅傳入的點名表會列印；同一週幾、同一位老師、不同節的會合併為該日一頁，其餘不合併。
  */
 export function buildAttendanceSheetsPrintHtml(sheets: AttendanceTableData[]): string {
   const merged = mergeSheetsByLanguageAndTeacher(sheets);

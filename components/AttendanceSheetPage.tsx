@@ -16,8 +16,6 @@ const AttendanceSheetPage: React.FC = () => {
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [dates, setDates] = useState<Date[]>([]);
   const [dateInput, setDateInput] = useState('');
-  const [genStartDate, setGenStartDate] = useState('');
-  const [genEndDate, setGenEndDate] = useState('');
   const [genDayOfWeek, setGenDayOfWeek] = useState('1');
   const [datesSettingOpen, setDatesSettingOpen] = useState(true);
   const [languageClassSettingsOpen, setLanguageClassSettingsOpen] = useState(false);
@@ -105,18 +103,16 @@ const AttendanceSheetPage: React.FC = () => {
     return `${y}-${m}-${day}`;
   };
 
+  /** 批次生成：直接依 Firebase 學期開始/結束與放假日，依選定星期幾生成日期（不提供手動區間） */
   const handleGenerateDates = () => {
-    if (!genStartDate || !genEndDate) return;
-    let start = new Date(genStartDate);
-    let end = new Date(genEndDate);
-    if (calendarSettings?.startDate) {
-      const rangeStart = new Date(calendarSettings.startDate);
-      if (rangeStart > start) start = rangeStart;
+    const startStr = calendarSettings?.startDate;
+    const endStr = calendarSettings?.endDate;
+    if (!startStr || !endStr) {
+      alert('尚未載入學期設定（學期開始/結束日），請確認 Firebase 已設定該學年學期。');
+      return;
     }
-    if (calendarSettings?.endDate) {
-      const rangeEnd = new Date(calendarSettings.endDate);
-      if (rangeEnd < end) end = rangeEnd;
-    }
+    const start = new Date(startStr);
+    const end = new Date(endStr);
     const holidaySet = new Set(calendarSettings?.holidays ?? []);
     const targetDay = parseInt(genDayOfWeek, 10);
     const newDates: Date[] = [];
@@ -438,12 +434,11 @@ const AttendanceSheetPage: React.FC = () => {
           <div className="p-4 pt-0 space-y-3">
             <div className="bg-blue-50 p-4 rounded-lg">
               <h4 className="font-bold text-blue-800 text-sm mb-2">批次生成（每週固定）</h4>
-              {calendarSettings && (calendarSettings.startDate || calendarSettings.endDate || (calendarSettings.holidays?.length ?? 0) > 0) && (
-                <p className="text-xs text-blue-700 mb-2">已套用 Firebase 學期區間與放假日，生成時會排除學期外與放假日；仍可手動加入或刪除日期。</p>
-              )}
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <input type="date" value={genStartDate} onChange={(e) => setGenStartDate(e.target.value)} className="border rounded p-1 text-sm" />
-                <input type="date" value={genEndDate} onChange={(e) => setGenEndDate(e.target.value)} className="border rounded p-1 text-sm" />
+              <p className="text-xs text-blue-700 mb-2">
+                時間直接參照 Firebase 學期開始與結束日，並自動排除法定放假日。僅可選擇星期幾後生成；仍可手動加入或刪除日期。
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <label className="text-sm text-slate-700">星期：</label>
                 <select value={genDayOfWeek} onChange={(e) => setGenDayOfWeek(e.target.value)} className="border rounded p-1 text-sm">
                   <option value="1">週一</option>
                   <option value="2">週二</option>
@@ -453,24 +448,18 @@ const AttendanceSheetPage: React.FC = () => {
                   <option value="6">週六</option>
                   <option value="0">週日</option>
                 </select>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {calendarSettings?.startDate != null && calendarSettings?.endDate != null && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGenStartDate(calendarSettings.startDate!);
-                      setGenEndDate(calendarSettings.endDate!);
-                    }}
-                    className="px-3 py-1.5 rounded text-sm bg-slate-600 text-white hover:bg-slate-700"
-                  >
-                    依學期設定帶入區間
-                  </button>
-                )}
-                <button type="button" onClick={handleGenerateDates} className="flex-1 min-w-[6rem] bg-blue-600 text-white py-1.5 rounded text-sm hover:bg-blue-700">
-                  生成日期
+                <button
+                  type="button"
+                  onClick={handleGenerateDates}
+                  disabled={!calendarSettings?.startDate || !calendarSettings?.endDate}
+                  className="px-3 py-1.5 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  依學期生成（排除放假日）
                 </button>
               </div>
+              {calendarSettings?.startDate && calendarSettings?.endDate && (
+                <p className="text-xs text-slate-600">學期區間：{calendarSettings.startDate} ～ {calendarSettings.endDate}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-600 mb-1">手動加入日期</label>
