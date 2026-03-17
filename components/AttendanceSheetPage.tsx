@@ -159,23 +159,43 @@ const AttendanceSheetPage: React.FC = () => {
   }, [languageClassSettings]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6 print:max-w-none print:mx-0 print:my-0">
       <style>{`
         @media print {
+          @page { size: A4 landscape; margin: 8mm; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            overflow: visible !important;
+            height: auto !important;
+          }
           .no-print { display: none !important; }
           .print-page {
-            width: 210mm;
-            min-height: 297mm;
             page-break-after: always;
             break-after: page;
+            page-break-inside: avoid;
+            break-inside: avoid-page;
+            width: 100%;
+            box-sizing: border-box;
           }
           .print-page:last-child {
             page-break-after: auto;
             break-after: auto;
           }
+          .print-sheets-container { margin: 0 !important; padding: 0 !important; max-width: none !important; }
+          #attendance-sheet-root {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 2mm 0 0 0 !important;
+            margin: 0 !important;
+            box-sizing: border-box;
+          }
+          #attendance-sheet-root table { table-layout: fixed; width: 100% !important; }
+          .print-date-cell { width: 8mm !important; min-width: 8mm !important; max-width: 8mm !important; }
         }
       `}</style>
-      <div>
+      <div className="no-print">
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <FileText className="text-blue-600" />
           點名單製作
@@ -185,7 +205,7 @@ const AttendanceSheetPage: React.FC = () => {
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
+      <div className="no-print bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-slate-700">學年度</label>
@@ -222,7 +242,7 @@ const AttendanceSheetPage: React.FC = () => {
       </div>
 
       {/* 語言班別設定：教室、時間、教師（與名單一併儲存） */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="no-print bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <button
           type="button"
           onClick={() => setLanguageClassSettingsOpen(!languageClassSettingsOpen)}
@@ -329,7 +349,7 @@ const AttendanceSheetPage: React.FC = () => {
         )}
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="no-print bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <button
           type="button"
           onClick={() => setDatesSettingOpen(!datesSettingOpen)}
@@ -456,16 +476,18 @@ const AttendanceSheetPage: React.FC = () => {
           </button>
         </div>
         {sheetDataList.length === 0 && (
-          <div className="bg-amber-50 border border-amber-200 p-6 rounded-lg text-amber-800 text-sm">
+          <div className="no-print bg-amber-50 border border-amber-200 p-6 rounded-lg text-amber-800 text-sm">
             <p className="font-medium mb-1">尚無可渲染的點名單。</p>
             <p>請先至「<strong>學生名單</strong>」建置名單，在此頁載入後可編輯語言班別設定並儲存，再設定點名單日期。</p>
           </div>
         )}
-        {selectedSheetDataList.map((data) => (
-          <div key={data.courseName} className="print-page break-before-page">
-            <AttendanceSheet data={data} />
-          </div>
-        ))}
+        <div className="print-sheets-container">
+          {selectedSheetDataList.map((data) => (
+            <div key={data.courseName} className="print-page">
+              <AttendanceSheet data={data} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

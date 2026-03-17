@@ -77,13 +77,12 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
   return (
     <div 
         id="attendance-sheet-root"
-        className="bg-white p-8 shadow-lg mx-auto overflow-x-auto print:shadow-none print:p-0 print:w-full print:overflow-visible text-black"
+        className="bg-white p-8 shadow-lg mx-auto overflow-x-auto print:shadow-none print:p-4 print:pt-2 print:w-full print:max-w-full print:overflow-visible print:box-border text-black"
         style={fontStyle}
     >
-      
       {/* 標題區塊 */}
-      <div className="text-center mb-1 relative">
-        <h1 className="text-2xl print:text-xl font-bold tracking-widest mb-2">
+      <div className="text-center mb-1 relative print:mb-0.5">
+        <h1 className="text-2xl print:text-xl font-bold tracking-widest mb-2 print:mb-1">
             {/* 修正：如果學期變數沒有「學期」二字 (例如 "下")，自動補上 */}
             {academicYear} 學年{semester.includes('學期') ? semester : `${semester}學期`}加昌國小{courseName}點名單
         </h1>
@@ -94,7 +93,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
       </div>
 
       {/* 資訊區塊 (左側對齊) */}
-      <div className="mb-1 text-base print:text-sm font-medium leading-tight">
+      <div className="mb-1 text-base print:text-sm font-medium leading-tight print:mb-0.5">
         <div>上課時間：{classTime}</div>
         <div>上課地點：{location}</div>
       </div>
@@ -112,18 +111,18 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
                 <th className={`${headerBorderStyle} w-20`}>班級</th>
                 <th className={`${headerBorderStyle} w-32`}>姓名</th>
                 
-                {/* 日期欄位 (MM/DD) */}
+                {/* 日期欄位 (MM/DD)，列印時以 .print-date-cell 固定寬度避免裁切 */}
                 {dates.map((date, idx) => {
                     const dateStr = formatDateMMDD(date);
                     return (
-                        <th key={idx} className={`${headerBorderStyle} min-w-[3rem]`}>
+                        <th key={idx} className={`${headerBorderStyle} min-w-[3rem] print-date-cell`}>
                             {dateStr}
                         </th>
                     );
                 })}
 
                 {/* 成績欄位 */}
-                <th className={`${headerBorderStyle} w-28 align-middle`}>
+                <th className={`${headerBorderStyle} w-28 print:w-20 align-middle`}>
                      <span className="block w-full text-center">成<br/>績</span>
                 </th>
             </tr>
@@ -150,7 +149,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
                     
                     {/* 日期格 (空白) */}
                     {dates.map((_, dateIdx) => (
-                        <td key={dateIdx} className={borderStyle}></td>
+                        <td key={dateIdx} className={`${borderStyle} print-date-cell`}></td>
                     ))}
 
                     {/* 成績格 (空白) */}
@@ -164,7 +163,7 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
                     教師簽名
                 </td>
                 {dates.map((_, dateIdx) => (
-                    <td key={dateIdx} className="border border-black"></td>
+                    <td key={dateIdx} className="border border-black print-date-cell"></td>
                 ))}
                 <td className="border border-black"></td>
             </tr>
