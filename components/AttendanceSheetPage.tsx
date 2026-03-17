@@ -6,6 +6,7 @@ import { FileText, Calendar as CalendarIcon, Printer, ChevronDown, ChevronRight,
 import AttendanceSheet from './AttendanceSheet';
 import { getLanguageElectiveRoster, saveLanguageElectiveRoster } from '../services/api';
 import type { LanguageElectiveStudent, LanguageClassSetting, AttendanceTableData, Student } from '../types';
+import { buildAttendanceSheetsPrintHtml } from '../utils/attendancePrintHtml';
 
 const AttendanceSheetPage: React.FC = () => {
   const [academicYear, setAcademicYear] = useState('114');
@@ -157,6 +158,22 @@ const AttendanceSheetPage: React.FC = () => {
     const names = new Set(languageClassSettings.map((s) => s.name?.trim()).filter(Boolean));
     return names.size;
   }, [languageClassSettings]);
+
+  /** 列印：開新視窗寫入整份 HTML，列印後關閉；若無法開新視窗則提示允許彈出 */
+  const handlePrintWithNewWindow = useCallback(() => {
+    if (selectedSheetDataList.length === 0) return;
+    const win = window.open('', '_blank');
+    if (!win) {
+      alert('無法開啟列印視窗，請允許瀏覽器的彈出視窗後再試。');
+      return;
+    }
+    const html = buildAttendanceSheetsPrintHtml(selectedSheetDataList);
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.onafterprint = () => win.close();
+    win.print();
+  }, [selectedSheetDataList]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 print:max-w-none print:mx-0 print:my-0 print:space-y-0">
@@ -486,7 +503,7 @@ const AttendanceSheetPage: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={handlePrintWithNewWindow}
             disabled={selectedSheetDataList.length === 0}
             className="flex items-center bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900 disabled:opacity-50 disabled:hover:bg-slate-800"
             title={selectedSheetDataList.length === 0 ? '請先勾選要輸出的點名單' : '列印'}
