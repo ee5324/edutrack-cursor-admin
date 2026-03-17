@@ -126,8 +126,7 @@ function buildOneSheet(data: AttendanceTableData): string {
         <tbody>
           ${rows}
           <tr class="row-sign">
-            <td colspan="4" class="td-sign">教師簽名</td>
-            ${dateFooterCells}
+            <td colspan="${4 + dates.length}" class="td-sign">教師簽名</td>
             <td class="td-cell td-last"></td>
           </tr>
         </tbody>

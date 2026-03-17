@@ -487,7 +487,17 @@ const AttendanceSheetPage: React.FC = () => {
               </div>
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-700 mb-2">已選日期（{dates.length}）</p>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-sm font-bold text-slate-700">已選日期（{dates.length}）</p>
+                <button
+                  type="button"
+                  onClick={() => setDates([])}
+                  disabled={dates.length === 0}
+                  className="px-2 py-1 rounded text-xs bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  一鍵清除
+                </button>
+              </div>
               <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
                 {dates.map((d, i) => (
                   <span key={i} className="bg-slate-100 border border-slate-300 px-2 py-1 rounded text-sm flex items-center">

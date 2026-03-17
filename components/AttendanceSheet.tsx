@@ -167,12 +167,10 @@ const AttendanceSheet: React.FC<AttendanceSheetProps> = ({ data }) => {
             
             {/* 頁尾：教師簽名 */}
             <tr className="h-14 print:h-12">
-                <td colSpan={4} className="border border-black px-4 font-bold text-center align-middle whitespace-nowrap">
+                {/* 合併儲存格：橫跨「編號、上課時間、班級、姓名」與所有日期欄位 */}
+                <td colSpan={4 + dates.length} className="border border-black px-4 font-bold text-center align-middle whitespace-nowrap">
                     教師簽名
                 </td>
-                {dates.map((_, dateIdx) => (
-                    <td key={dateIdx} className="border border-black print-date-cell"></td>
-                ))}
                 <td className="border border-black"></td>
             </tr>
         </tbody>
