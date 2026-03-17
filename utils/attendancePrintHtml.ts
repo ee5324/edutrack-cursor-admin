@@ -77,10 +77,10 @@ function buildOneSheet(data: AttendanceTableData): string {
           : '';
       return `<tr${gray}${grayStyle}>
         <td class="td-cell">${esc(student.id)}</td>${periodCell}
-        <td class="td-cell">${esc(student.className)}</td>
+        <td class="td-cell td-class">${esc(student.className)}</td>
         <td class="td-cell td-name">${esc(student.name)}</td>
         ${dateCellsBody}
-        <td class="td-cell"></td>
+        <td class="td-cell td-last"></td>
       </tr>`;
     })
     .join('');
@@ -113,7 +113,7 @@ function buildOneSheet(data: AttendanceTableData): string {
           <tr class="row-sign">
             <td colspan="4" class="td-sign">教師簽名</td>
             ${dateFooterCells}
-            <td class="td-cell"></td>
+            <td class="td-cell td-last"></td>
           </tr>
         </tbody>
       </table>
@@ -140,17 +140,38 @@ const PRINT_CSS = `
   .sheet-title { font-size: 20px; font-weight: bold; letter-spacing: 0.1em; margin: 0 0 4px 0; }
   .sheet-teacher { font-size: 14px; text-align: right; }
   .sheet-info { font-size: 12px; font-weight: 500; margin-bottom: 2px; }
-  .sheet-table { width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 12px; table-layout: fixed; }
-  .th-cell, .td-cell { border: 1px solid #000; padding: 2px 4px; text-align: center; vertical-align: middle; white-space: nowrap; overflow: hidden; }
+  .sheet-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+    border-top: 1px solid #000;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+    border-left: 1px solid #000;
+  }
+  .sheet-table th,
+  .sheet-table td {
+    border-top: 1px solid #000;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+    border-left: 1px solid #000;
+    padding: 2px 4px;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+  }
   .th-cell { background: #f9fafb; font-weight: 600; }
   .td-date, .th-date { width: 8mm !important; min-width: 8mm !important; max-width: 8mm !important; }
   .w-num { width: 2.5em; }
   .w-time { width: 5em; }
-  .w-class { width: 4em; }
-  .w-name { width: 6em; }
+  .w-class { width: 4em; font-size: 13.5pt; }
+  .w-name { width: 6em; font-size: 13.5pt; }
   .w-grade { width: 4em; }
-  .cell-inner { display: block; width: 100%; text-align: center; }
+  .td-class, .td-name { font-size: 13.5pt; }
   .td-name { font-weight: 500; }
+  .cell-inner { display: block; width: 100%; text-align: center; }
   .row-gray { background: #f3f4f6; }
   .row-sign .td-sign { font-weight: bold; text-align: center; padding: 4px 8px; }
 `;
