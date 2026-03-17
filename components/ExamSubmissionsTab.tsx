@@ -305,6 +305,33 @@ const ExamSubmissionsTab: React.FC<Props> = ({ currentAccess, currentUserEmail }
         </div>
       </div>
 
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <details className="group">
+          <summary className="cursor-pointer select-none flex items-center justify-between gap-3">
+            <span className="font-semibold text-slate-800">使用說明（可摺疊）</span>
+            <span className="text-xs text-slate-500 group-open:hidden">展開</span>
+            <span className="text-xs text-slate-500 hidden group-open:inline">收合</span>
+          </summary>
+          <div className="mt-3 text-sm text-slate-700 space-y-2">
+            <ul className="list-disc pl-5 space-y-1">
+              <li>
+                <span className="font-semibold">獎項分類 / 細項是什麼？</span> 例如「優異 / 進步」是分類；分類底下的「國語、數學…」等為細項。導師在對外填報時可依學生勾選一或多個細項（可複選）。
+              </li>
+              <li>
+                <span className="font-semibold">活動的「預設鎖定 / 不鎖定」差異</span>：此設定是活動層級的規則，代表系統希望導師送出後是否以「鎖定」為主流程。
+                <span className="font-semibold">預設鎖定</span>較能避免反覆修改造成資料混亂；若選<span className="font-semibold">不鎖定</span>，通常表示允許導師在期限內自行反覆調整（仍建議搭配清楚的截止時間與管理方式）。
+              </li>
+              <li>
+                <span className="font-semibold">提報資料的「鎖定」是什麼？</span> 導師每班每次段考送出後，該班資料會標記為 <span className="font-mono">locked=true</span>。若需修改，請管理者在下方「提報總覽」按 <span className="font-semibold">解鎖</span>，導師才能重新送出更新。
+              </li>
+              <li>
+                <span className="font-semibold">同一班重複提報</span>：以最後一次送出為準，並記錄送出者 Email 與時間。
+              </li>
+            </ul>
+          </div>
+        </details>
+      </div>
+
       {(err || msg) && (
         <div className={`rounded-lg border p-3 text-sm ${err ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
           {err ?? msg}
