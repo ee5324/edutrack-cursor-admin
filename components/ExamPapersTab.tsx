@@ -611,7 +611,7 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
             {rootFolders.map((f) => (
               <React.Fragment key={f.id}>
                 <div
-                  className="group flex items-center gap-1"
+                  className={`group flex items-center gap-1 ${dropTargetId === f.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}`}
                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(f.id); }}
                   onDragLeave={() => setDropTargetId(null)}
                   onDrop={(e) => {
@@ -625,7 +625,6 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                       handleMoveToFolder(item, f.id);
                     } catch (_) {}
                   }}
-                  className={dropTargetId === f.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
                 >
                   {editingFolderId === f.id ? (
                     <div className="flex-1 flex items-center gap-2 px-2 py-1.5">
@@ -664,7 +663,7 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                 {(childrenByParent[f.id] ?? []).map((sub) => (
                   <div key={sub.id} className="pl-4">
                     <div
-                      className="group flex items-center gap-1"
+                      className={`group flex items-center gap-1 ${dropTargetId === sub.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}`}
                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropTargetId(sub.id); }}
                       onDragLeave={() => setDropTargetId(null)}
                       onDrop={(e) => {
@@ -678,7 +677,6 @@ const ExamPapersTab: React.FC<ExamPapersTabProps> = ({ user }) => {
                           handleMoveToFolder(item, sub.id);
                         } catch (_) {}
                       }}
-                      className={dropTargetId === sub.id ? 'rounded-lg ring-2 ring-violet-400 ring-inset bg-violet-50' : ''}
                     >
                       {editingFolderId === sub.id ? (
                         <div className="flex-1 flex items-center gap-2 px-2 py-1.5">
