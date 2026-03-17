@@ -20,6 +20,7 @@ const AttendanceSheetPage: React.FC = () => {
   const [genDayOfWeek, setGenDayOfWeek] = useState('1');
   const [datesSettingOpen, setDatesSettingOpen] = useState(true);
   const [languageClassSettingsOpen, setLanguageClassSettingsOpen] = useState(false);
+  const [printSelectionOpen, setPrintSelectionOpen] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -132,6 +133,26 @@ const AttendanceSheetPage: React.FC = () => {
     return list;
   }, [academicYear, semester, languageClassSettings, students, dates]);
 
+  /** 列印輸出勾選：以課程/班別名稱（courseName）為 key */
+  const [selectedSheetNames, setSelectedSheetNames] = useState<Set<string>>(new Set());
+  const [selectionInitialized, setSelectionInitialized] = useState(false);
+  useEffect(() => {
+    const names = sheetDataList.map((d) => d.courseName).filter(Boolean);
+    setSelectedSheetNames((prev) => {
+      // 首次有資料時：預設全選
+      if (!selectionInitialized) return new Set(names);
+      // 之後：保留既有勾選（若班別消失則自動移除），不自動加回使用者取消的勾選
+      const current = new Set(names);
+      return new Set(Array.from(prev).filter((n) => current.has(n)));
+    });
+    if (!selectionInitialized && names.length > 0) setSelectionInitialized(true);
+  }, [sheetDataList, selectionInitialized]);
+
+  const selectedSheetDataList = useMemo(() => {
+    if (selectedSheetNames.size === 0) return [];
+    return sheetDataList.filter((d) => selectedSheetNames.has(d.courseName));
+  }, [sheetDataList, selectedSheetNames]);
+
   const classCount = useMemo(() => {
     const names = new Set(languageClassSettings.map((s) => s.name?.trim()).filter(Boolean));
     return names.size;
@@ -139,6 +160,21 @@ const AttendanceSheetPage: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .print-page {
+            width: 210mm;
+            min-height: 297mm;
+            page-break-after: always;
+            break-after: page;
+          }
+          .print-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+        }
+      `}</style>
       <div>
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <FileText className="text-blue-600" />
@@ -353,10 +389,69 @@ const AttendanceSheetPage: React.FC = () => {
 
       <div className="space-y-6 pb-20">
         <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex justify-between items-center no-print">
-          <div className="text-sm text-blue-800">
-            <strong>點名單預覽</strong> — 依語言班別共 {sheetDataList.length} 張，教室／時間／教師由學生名單之語言班別設定帶入。
+          <div className="text-sm text-blue-800 flex-1 min-w-0">
+            <strong>點名單預覽</strong> — 依語言班別共 {sheetDataList.length} 張；目前勾選輸出 {selectedSheetDataList.length} 張。
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setPrintSelectionOpen((v) => !v)}
+                className="text-blue-800 hover:underline inline-flex items-center gap-1"
+              >
+                {printSelectionOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                選擇要輸出的點名單
+              </button>
+              {printSelectionOpen && (
+                <div className="mt-2 bg-white/70 border border-blue-200 rounded-lg p-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSheetNames(new Set(sheetDataList.map((d) => d.courseName).filter(Boolean)))}
+                      className="px-2 py-1 rounded bg-blue-600 text-white text-xs hover:bg-blue-700"
+                    >
+                      全選
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSheetNames(new Set())}
+                      className="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs hover:bg-slate-300"
+                    >
+                      全不選
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {sheetDataList.map((d) => (
+                      <label key={d.courseName} className="flex items-start gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={selectedSheetNames.has(d.courseName)}
+                          onChange={() => {
+                            setSelectedSheetNames((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(d.courseName)) next.delete(d.courseName);
+                              else next.add(d.courseName);
+                              return next;
+                            });
+                          }}
+                          className="mt-1"
+                        />
+                        <span className="min-w-0">
+                          <span className="font-medium">{d.courseName}</span>
+                          <span className="text-slate-500">（{d.students.length}人）</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <button type="button" onClick={() => window.print()} className="flex items-center bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={selectedSheetDataList.length === 0}
+            className="flex items-center bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-900 disabled:opacity-50 disabled:hover:bg-slate-800"
+            title={selectedSheetDataList.length === 0 ? '請先勾選要輸出的點名單' : '列印'}
+          >
             <Printer size={18} className="mr-2" /> 列印
           </button>
         </div>
@@ -366,8 +461,8 @@ const AttendanceSheetPage: React.FC = () => {
             <p>請先至「<strong>學生名單</strong>」建置名單，在此頁載入後可編輯語言班別設定並儲存，再設定點名單日期。</p>
           </div>
         )}
-        {sheetDataList.map((data, idx) => (
-          <div key={idx} className="break-before-page">
+        {selectedSheetDataList.map((data) => (
+          <div key={data.courseName} className="print-page break-before-page">
             <AttendanceSheet data={data} />
           </div>
         ))}
