@@ -28,8 +28,14 @@ const LanguageElectiveRoster: React.FC = () => {
   const [inheriting, setInheriting] = useState(false);
   /** 本 session 內手動改過選修語言的列索引，繼承時不覆蓋 */
   const [manualEditIndices, setManualEditIndices] = useState<Set<number>>(new Set());
-  /** 搜尋：姓名或座號（空白則顯示全部） */
+  /** 搜尋：姓名或座號（空白則顯示全部）；輸入值，即時顯示於 input */
   const [searchQuery, setSearchQuery] = useState('');
+  /** 搜尋篩選值：debounce 後才套用，避免每鍵觸發 1500+ 筆重算造成 INP 卡頓 */
+  const [searchFilter, setSearchFilter] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setSearchFilter(searchQuery), 280);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
   /** 班級篩選：下拉選單，空白＝全部 */
   const [classFilter, setClassFilter] = useState('');
   /** 選修語言篩選：下拉選單，空白＝全部 */
@@ -67,19 +73,20 @@ const LanguageElectiveRoster: React.FC = () => {
     return Array.from(combined).filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-TW'));
   }, [languageOptions, filterSnapshot, students]);
 
-  /** 依搜尋條件篩選（以 filterSnapshot 判斷），顯示用 students[i]，避免編輯時篩選結果變動導致跳走 */
+  /** 依搜尋條件篩選（以 filterSnapshot 判斷，使用 debounced searchFilter 避免每鍵重算） */
   const filteredWithIndex = useMemo(() => {
     const snap = filterSnapshot.length === students.length ? filterSnapshot : students;
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchFilter.trim().toLowerCase();
     if (!q) return students.map((s, i) => ({ s, i }));
+    const qTrim = searchFilter.trim();
     return students
       .map((s, i) => ({ s, i }))
       .filter((_, i) => {
         const fs = snap[i];
         if (!fs) return false;
-        return fs.name.toLowerCase().includes(q) || fs.seat === searchQuery.trim() || String(fs.seat).includes(q);
+        return fs.name.toLowerCase().includes(q) || fs.seat === qTrim || String(fs.seat).includes(q);
       });
-  }, [students, filterSnapshot, searchQuery]);
+  }, [students, filterSnapshot, searchFilter]);
 
   /** 依班級篩選（以 filterSnapshot 判斷） */
   const filteredByClass = useMemo(() => {
