@@ -93,6 +93,8 @@ export const COLLECTIONS = {
   EXAM_SUBMISSIONS: `${COLLECTION_PREFIX}exam_submissions`,
   /** 段考提報：獎項設定（單一 doc exam_awards） */
   EXAM_SYSTEM: `${COLLECTION_PREFIX}exam_system`,
+  /** 計畫／預算（核配額、已支出、剩餘追蹤） */
+  BUDGET_PLANS: `${COLLECTION_PREFIX}budget_plans`,
 } as const;
 
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */

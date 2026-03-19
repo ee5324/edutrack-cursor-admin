@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award, Wallet } from 'lucide-react';
 import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -46,6 +46,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
   const menuItemsFlat: MenuItemFlat[] = [
     { id: 'calendar', label: '行政行事曆', icon: CalendarDays },
     { id: 'student-roster', label: '學生名單', icon: Users },
+    { id: 'budget-plans', label: '計畫預算', icon: Wallet },
     { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
     { id: 'exam-submissions', label: '段考提報', icon: Award },
@@ -65,13 +66,17 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
     return flat?.label ?? '';
   };
 
-  /** 選單順序：前兩項為行政行事曆、學生名單，其餘依 menuItemsFlat 順序；巢狀群組插在第二項之後 */
-  const menuItemsFirst = menuItemsFlat.filter((i) => i.id === 'calendar' || i.id === 'student-roster');
-  const menuItemsRest = menuItemsFlat.filter((i) => i.id !== 'calendar' && i.id !== 'student-roster');
+  /** 選單順序：行政行事曆、學生名單、計畫預算，其餘依 menuItemsFlat 順序；巢狀群組插在第三項之後 */
+  const menuItemsFirst = menuItemsFlat.filter(
+    (i) => i.id === 'calendar' || i.id === 'student-roster' || i.id === 'budget-plans'
+  );
+  const menuItemsRest = menuItemsFlat.filter(
+    (i) => i.id !== 'calendar' && i.id !== 'student-roster' && i.id !== 'budget-plans'
+  );
 
   const navContent = (
     <nav className="flex flex-col gap-0.5 w-full py-3">
-      {/* 第一位：行政行事曆；第二位：學生名單 */}
+      {/* 行政行事曆、學生名單、計畫預算 */}
       {menuItemsFirst.map((item) => {
         const Icon = item.icon;
         return (

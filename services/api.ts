@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -35,6 +35,9 @@ import {
   sandboxGetVendors,
   sandboxSaveVendor,
   sandboxDeleteVendor,
+  sandboxGetBudgetPlans,
+  sandboxSaveBudgetPlan,
+  sandboxDeleteBudgetPlan,
   sandboxGetArchiveTasks,
   sandboxSaveArchiveTask,
   sandboxDeleteArchiveTask,
@@ -368,6 +371,67 @@ export async function deleteVendor(payload: { id: string }) {
   if (isSandbox()) return sandboxDeleteVendor(payload);
   const db = getDb();
   if (db) await deleteDoc(doc(db, COLLECTIONS.VENDORS, payload.id));
+  return { success: true };
+}
+
+// --- Budget plans (Firestore) ---
+
+function numFromFirestore(v: unknown, fallback = 0): number {
+  if (typeof v === 'number' && !Number.isNaN(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseFloat(v);
+    return Number.isNaN(n) ? fallback : n;
+  }
+  return fallback;
+}
+
+export async function getBudgetPlans(): Promise<BudgetPlan[]> {
+  if (isSandbox()) return sandboxGetBudgetPlans();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(query(collection(db, COLLECTIONS.BUDGET_PLANS), orderBy('updatedAt', 'desc')));
+  return snap.docs.map((d) => {
+    const data = d.data();
+    const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
+    const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
+    return {
+      id: d.id,
+      name: data.name ?? '',
+      budgetTotal: numFromFirestore(data.budgetTotal),
+      spentTotal: numFromFirestore(data.spentTotal),
+      note: data.note ?? '',
+      createdAt,
+      updatedAt,
+    };
+  });
+}
+
+export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: string }) {
+  if (isSandbox()) return sandboxSaveBudgetPlan(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = payload.id ?? (crypto.randomUUID?.() ?? `bp-${Date.now()}`);
+  const budgetTotal = Math.max(0, numFromFirestore(payload.budgetTotal));
+  const spentTotal = Math.max(0, numFromFirestore(payload.spentTotal));
+  const data: DocumentData = {
+    name: payload.name ?? '',
+    budgetTotal,
+    spentTotal,
+    note: payload.note ?? '',
+    updatedAt: serverTimestamp(),
+  };
+  const existing = await getDoc(doc(db, COLLECTIONS.BUDGET_PLANS, id));
+  if (!existing.exists()) {
+    data.createdAt = serverTimestamp();
+  }
+  await setDoc(doc(db, COLLECTIONS.BUDGET_PLANS, id), data, { merge: true });
+  return { success: true, id };
+}
+
+export async function deleteBudgetPlan(payload: { id: string }) {
+  if (isSandbox()) return sandboxDeleteBudgetPlan(payload);
+  const db = getDb();
+  if (db) await deleteDoc(doc(db, COLLECTIONS.BUDGET_PLANS, payload.id));
   return { success: true };
 }
 

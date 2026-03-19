@@ -12,6 +12,7 @@ import VendorManager from './VendorManager';
 import ExamPapersTab from './components/ExamPapersTab';
 import ArchiveManager from './ArchiveManager';
 import ExamSubmissionsTab from './components/ExamSubmissionsTab';
+import BudgetPlansTab from './components/BudgetPlansTab';
 import ExamSubmitPublicPage from './components/ExamSubmitPublicPage';
 import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -602,6 +603,8 @@ const App: React.FC = () => {
         return <TodoCalendar />;
       case 'student-roster':
         return <LanguageElectiveRoster />;
+      case 'budget-plans':
+        return <BudgetPlansTab />;
       case 'language-elective':
         return <LanguageElectiveRoster />;
       case 'language-dashboard':

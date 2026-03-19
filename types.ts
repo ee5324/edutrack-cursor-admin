@@ -227,6 +227,20 @@ export interface Vendor {
   qrcodeUrl?: string; // 聯繫方式 QR Code 圖片網址或 data URL (base64)
 }
 
+/** 計畫／預算：核配額度與已支出，剩餘由前端計算 */
+export interface BudgetPlan {
+  id: string;
+  /** 計畫名稱 */
+  name: string;
+  /** 核配／計畫總額（元） */
+  budgetTotal: number;
+  /** 已支出／已動用（元） */
+  spentTotal: number;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // 舊版相容 (如果還需要) - 可以考慮移除或保留作為過渡
 export interface AttendanceSheetData {
   date: Date;

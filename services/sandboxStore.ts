@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -110,6 +110,17 @@ const store = {
   examAwardsConfig: { categories: [] } as ExamAwardsConfig,
   examSubmitAllowedUsers: {} as Record<string, ExamSubmitAllowedUser>,
   examSubmissions: {} as Record<string, ExamSubmission>,
+  budgetPlans: [
+    {
+      id: 'sandbox-bp-1',
+      name: '範例：本土語補助',
+      budgetTotal: 50000,
+      spentTotal: 12000,
+      note: 'Sandbox 示範',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ] as BudgetPlan[],
 };
 
 // --- Courses & Students ---
@@ -256,6 +267,34 @@ export function sandboxSaveVendor(payload: Partial<Vendor> & { name: string }) {
 
 export function sandboxDeleteVendor(payload: { id: string }) {
   store.vendors = store.vendors.filter((v) => v.id !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
+// --- Budget plans ---
+export function sandboxGetBudgetPlans(): Promise<BudgetPlan[]> {
+  return Promise.resolve([...store.budgetPlans].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')));
+}
+
+export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: string }) {
+  const id = payload.id ?? uid();
+  const now = new Date().toISOString();
+  const idx = store.budgetPlans.findIndex((p) => p.id === id);
+  const row: BudgetPlan = {
+    id,
+    name: payload.name ?? '',
+    budgetTotal: Number(payload.budgetTotal) >= 0 ? Number(payload.budgetTotal) : 0,
+    spentTotal: Number(payload.spentTotal) >= 0 ? Number(payload.spentTotal) : 0,
+    note: payload.note ?? '',
+    createdAt: idx >= 0 ? store.budgetPlans[idx].createdAt ?? now : now,
+    updatedAt: now,
+  };
+  if (idx >= 0) store.budgetPlans[idx] = row;
+  else store.budgetPlans.push(row);
+  return Promise.resolve({ success: true, id });
+}
+
+export function sandboxDeleteBudgetPlan(payload: { id: string }) {
+  store.budgetPlans = store.budgetPlans.filter((p) => p.id !== payload.id);
   return Promise.resolve({ success: true });
 }
 

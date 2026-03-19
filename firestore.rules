@@ -209,6 +209,9 @@ service cloud.firestore {
     match /edutrack_calendar_settings/{docId} {
       allow read, write: if isEduTrackAllowedUser();
     }
+    match /edutrack_budget_plans/{id} {
+      allow read, write: if isEduTrackAllowedUser();
+    }
     
     // =========================================================
     // 預設規則
