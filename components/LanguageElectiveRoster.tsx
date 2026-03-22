@@ -48,8 +48,8 @@ const LanguageElectiveRoster: React.FC = () => {
   const [batchLanguageClass, setBatchLanguageClass] = useState('');
   /** 所有學年名單（用於跨學年語言選修不同警示） */
   const [allRosters, setAllRosters] = useState<{ academicYear: string; students: LanguageElectiveStudent[] }[]>([]);
-  /** 語言班別警示區塊是否展開 */
-  const [noLanguageClassWarningOpen, setNoLanguageClassWarningOpen] = useState(true);
+  /** 語言班別警示區塊是否展開（預設收合，有需要再點開） */
+  const [noLanguageClassWarningOpen, setNoLanguageClassWarningOpen] = useState(false);
   /** 新增學生表單 */
   const [showAddForm, setShowAddForm] = useState(false);
   const [newClassName, setNewClassName] = useState('');
