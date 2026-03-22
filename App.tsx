@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Layout from './components/Layout';
 import Login from './components/Login';
 import AllowedUsersManager from './components/AllowedUsersManager';
@@ -16,7 +16,19 @@ import BudgetPlansTab from './components/BudgetPlansTab';
 import ExamSubmitPublicPage from './components/ExamSubmitPublicPage';
 import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { setupSystem, getArchiveTasks, getLanguageElectiveRoster, getAllLanguageElectiveRosters, buildNameToLanguageFromRosters, saveLanguageElectiveRoster, getLanguageOptions, saveLanguageOptionsToFirebase, mergeLanguageOptionsFromRosters } from './services/api';
+import {
+  setupSystem,
+  getArchiveTasks,
+  getBudgetPlans,
+  getLanguageElectiveRoster,
+  getAllLanguageElectiveRosters,
+  buildNameToLanguageFromRosters,
+  saveLanguageElectiveRoster,
+  getLanguageOptions,
+  saveLanguageOptionsToFirebase,
+  mergeLanguageOptionsFromRosters,
+} from './services/api';
+import { summarizeBudgetPlanAlerts } from './utils/budgetPlanAlerts';
 import { migrateSheetToFirebase } from './services/migrateSheetToFirebase';
 import { onAuthStateChanged, signOut } from './services/auth';
 import { isSandbox, isPinBypassActive, isPinUiEnabled, setPinUiEnabled, setPinBypass, TEST_PIN } from './services/sandboxStore';
@@ -516,6 +528,7 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState('calendar');
   const [archiveCount, setArchiveCount] = useState(0);
+  const [budgetNavAlert, setBudgetNavAlert] = useState({ count: 0, overdue: 0 });
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [accessLoading, setAccessLoading] = useState(false);
@@ -597,6 +610,21 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  const refreshBudgetNavAlerts = useCallback(async () => {
+    try {
+      const plans = await getBudgetPlans(undefined);
+      setBudgetNavAlert(summarizeBudgetPlanAlerts(plans));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // 計畫專案：導覽列警示（結案 30 天內或逾期，且狀態為進行中）
+  useEffect(() => {
+    if (!isSandbox() && !user) return;
+    void refreshBudgetNavAlerts();
+  }, [user, activeTab, refreshBudgetNavAlerts]);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'calendar':
@@ -604,7 +632,7 @@ const App: React.FC = () => {
       case 'student-roster':
         return <LanguageElectiveRoster />;
       case 'budget-plans':
-        return <BudgetPlansTab />;
+        return <BudgetPlansTab onDataChanged={refreshBudgetNavAlerts} />;
       case 'language-elective':
         return <LanguageElectiveRoster />;
       case 'language-dashboard':
@@ -647,6 +675,8 @@ const App: React.FC = () => {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       archiveCount={archiveCount}
+      budgetPlansAlertCount={budgetNavAlert.count}
+      budgetPlansAlertOverdue={budgetNavAlert.overdue > 0}
       user={user}
       onSignOut={() => signOut()}
     >

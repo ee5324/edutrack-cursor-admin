@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wallet, Plus, Trash2, Save, Loader2, RefreshCw } from 'lucide-react';
-import type { BudgetPlan } from '../types';
+import { Wallet, Plus, Trash2, Save, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import type { BudgetPlan, BudgetPlanStatus } from '../types';
 import { getBudgetPlans, saveBudgetPlan, deleteBudgetPlan } from '../services/api';
+import { closeDateAlertLabel } from '../utils/budgetPlanAlerts';
 
 const fmtMoney = (n: number) =>
   n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -23,23 +24,30 @@ function validateBudgetRequired(p: {
   academicYear: string;
   closeByDate: string;
   closureRequirements: string;
+  accountingCode: string;
 }): string | null {
   if (!p.academicYear.trim()) return '請選擇學年度';
+  if (!p.accountingCode.trim()) return '請填寫會計代碼';
   if (!p.closeByDate.trim() || !ISO_DATE.test(p.closeByDate.trim())) return '請填寫有效的計畫結案日期（YYYY-MM-DD）';
   if (!p.closureRequirements.trim()) return '請填寫結案要求';
   return null;
 }
 
-const BudgetPlansTab: React.FC = () => {
+interface BudgetPlansTabProps {
+  /** 儲存／刪除後通知上層重新計算導覽警示 */
+  onDataChanged?: () => void;
+}
+
+const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   const [plans, setPlans] = useState<BudgetPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [academicYear, setAcademicYear] = useState(defaultRocYear);
-  /** 在「全部學年」檢視時，新增計畫用的學年度 */
   const [newPlanYear, setNewPlanYear] = useState(defaultRocYear);
   const [newRow, setNewRow] = useState({
     name: '',
+    accountingCode: '',
     budgetTotal: '',
     spentTotal: '0',
     closeByDate: '',
@@ -71,6 +79,7 @@ const BudgetPlansTab: React.FC = () => {
       academicYear: p.academicYear ?? '',
       closeByDate: p.closeByDate ?? '',
       closureRequirements: p.closureRequirements ?? '',
+      accountingCode: p.accountingCode ?? '',
     });
     if (ve) {
       setError(ve);
@@ -85,16 +94,20 @@ const BudgetPlansTab: React.FC = () => {
         id: p.id,
         academicYear: String(p.academicYear).trim(),
         name: p.name.trim(),
+        accountingCode: String(p.accountingCode).trim(),
         budgetTotal: Number(p.budgetTotal) || 0,
         spentTotal: Number(p.spentTotal) || 0,
         closeByDate: String(p.closeByDate).trim(),
         closureRequirements: String(p.closureRequirements).trim(),
+        status: p.status === 'closed' ? 'closed' : 'active',
         note: p.note ?? '',
       });
       await load();
+      onDataChanged?.();
       if (!p.id) {
         setNewRow({
           name: '',
+          accountingCode: '',
           budgetTotal: '',
           spentTotal: '0',
           closeByDate: '',
@@ -116,6 +129,7 @@ const BudgetPlansTab: React.FC = () => {
     try {
       await deleteBudgetPlan({ id });
       await load();
+      onDataChanged?.();
     } catch (e: any) {
       setError(e?.message || '刪除失敗');
     } finally {
@@ -127,22 +141,29 @@ const BudgetPlansTab: React.FC = () => {
 
   const canCreate =
     effectiveNewYear.trim() &&
+    newRow.accountingCode.trim() &&
     newRow.name.trim() &&
     newRow.closeByDate.trim() &&
     ISO_DATE.test(newRow.closeByDate.trim()) &&
     newRow.closureRequirements.trim();
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <Wallet className="text-emerald-600" />
-          計畫預算
+          計畫專案管理
         </h1>
         <p className="text-gray-500 text-sm mt-1">
-          依<strong>學年度</strong>管理各項計畫核配額度與已支出；每筆計畫需填寫<strong>計畫結案時間</strong>與<strong>結案要求</strong>。資料儲存於 Firebase（
-          <code className="text-xs bg-slate-100 px-1 rounded">edutrack_budget_plans</code>）。
+          以專案方式追蹤核配與支出：<strong>建立後請依執行進度隨時更新「已支出」</strong>，無需一次登錄完。每筆需填
+          <strong>會計代碼</strong>、<strong>結案日</strong>與<strong>結案要求</strong>。資料存於{' '}
+          <code className="text-xs bg-slate-100 px-1 rounded">edutrack_budget_plans</code>。
         </p>
+      </div>
+
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+        <strong>使用方式：</strong>
+        初始建立時可將「已支出」設為 0 或目前已動用金額；之後依請購、核銷或付款進度，開啟本頁編輯該列並儲存即可更新。「已結案」的計畫不會再出現在左側選單的結案警示。
       </div>
 
       <div className="flex flex-wrap items-end gap-4 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
@@ -201,7 +222,7 @@ const BudgetPlansTab: React.FC = () => {
             </select>
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="lg:col-span-2">
             <label className="block text-xs text-slate-500 mb-1">計畫名稱</label>
             <input
@@ -209,6 +230,17 @@ const BudgetPlansTab: React.FC = () => {
               onChange={(e) => setNewRow((r) => ({ ...r, name: e.target.value }))}
               className="w-full border rounded-lg px-2 py-1.5 text-sm"
               placeholder="例：本土語補助"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">
+              會計代碼 <span className="text-red-500">*</span>
+            </label>
+            <input
+              value={newRow.accountingCode}
+              onChange={(e) => setNewRow((r) => ({ ...r, accountingCode: e.target.value }))}
+              className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono"
+              placeholder="例：5010-01"
             />
           </div>
           <div>
@@ -222,7 +254,7 @@ const BudgetPlansTab: React.FC = () => {
               className="w-full border rounded-lg px-2 py-1.5 text-sm"
             />
           </div>
-          <div className="sm:col-span-2 lg:col-span-3">
+          <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs text-slate-500 mb-1">
               結案要求 <span className="text-red-500">*</span>
             </label>
@@ -256,7 +288,7 @@ const BudgetPlansTab: React.FC = () => {
               className="w-full border rounded-lg px-2 py-1.5 text-sm"
             />
           </div>
-          <div className="flex items-end">
+          <div className="flex items-end lg:col-span-2">
             <button
               type="button"
               disabled={!canCreate || savingId === 'new'}
@@ -264,14 +296,16 @@ const BudgetPlansTab: React.FC = () => {
                 handleSave({
                   academicYear: effectiveNewYear,
                   name: newRow.name,
+                  accountingCode: newRow.accountingCode,
                   budgetTotal: Number(newRow.budgetTotal) || 0,
                   spentTotal: Number(newRow.spentTotal) || 0,
                   closeByDate: newRow.closeByDate,
                   closureRequirements: newRow.closureRequirements,
+                  status: 'active',
                   note: newRow.note,
                 })
               }
-              className="w-full inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
             >
               {savingId === 'new' ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
               建立
@@ -303,18 +337,21 @@ const BudgetPlansTab: React.FC = () => {
           <div className="p-8 text-center text-slate-500 text-sm">此學年度尚無計畫，請先新增一筆。</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[900px]">
+            <table className="w-full text-sm min-w-[1100px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-24">學年度</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-700 min-w-[120px]">計畫名稱</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-36">結案時間</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-700 min-w-[180px]">結案要求</th>
-                  <th className="text-right px-3 py-2 font-semibold text-slate-700 w-28">核配額度</th>
-                  <th className="text-right px-3 py-2 font-semibold text-slate-700 w-28">已支出</th>
-                  <th className="text-right px-3 py-2 font-semibold text-slate-700 w-28">剩餘</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-700 min-w-[120px]">備註</th>
-                  <th className="w-28 px-3 py-2"></th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-24">狀態</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-24">學年</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 min-w-[100px]">計畫</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-28">會計代碼</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-36">結案日</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 w-32">提醒</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 min-w-[160px]">結案要求</th>
+                  <th className="text-right px-3 py-2 font-semibold text-slate-700 w-24">核配</th>
+                  <th className="text-right px-3 py-2 font-semibold text-slate-700 w-24">已支出</th>
+                  <th className="text-right px-3 py-2 font-semibold text-slate-700 w-24">剩餘</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-700 min-w-[100px]">備註</th>
+                  <th className="w-24 px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -340,7 +377,6 @@ const BudgetPlansTab: React.FC = () => {
   );
 };
 
-/** 單列可編輯 */
 const PlanRow: React.FC<{
   plan: BudgetPlan;
   remaining: number;
@@ -348,8 +384,10 @@ const PlanRow: React.FC<{
   onSave: (p: Partial<BudgetPlan> & { name: string; id?: string }) => void;
   onDelete: () => void;
 }> = ({ plan, remaining, saving, onSave, onDelete }) => {
+  const [status, setStatus] = useState<BudgetPlanStatus>(plan.status === 'closed' ? 'closed' : 'active');
   const [academicYear, setAcademicYear] = useState(plan.academicYear || '');
   const [name, setName] = useState(plan.name);
+  const [accountingCode, setAccountingCode] = useState(plan.accountingCode || '');
   const [budgetTotal, setBudgetTotal] = useState(String(plan.budgetTotal));
   const [spentTotal, setSpentTotal] = useState(String(plan.spentTotal));
   const [closeByDate, setCloseByDate] = useState(plan.closeByDate || '');
@@ -357,8 +395,10 @@ const PlanRow: React.FC<{
   const [note, setNote] = useState(plan.note ?? '');
 
   useEffect(() => {
+    setStatus(plan.status === 'closed' ? 'closed' : 'active');
     setAcademicYear(plan.academicYear || '');
     setName(plan.name);
+    setAccountingCode(plan.accountingCode || '');
     setBudgetTotal(String(plan.budgetTotal));
     setSpentTotal(String(plan.spentTotal));
     setCloseByDate(plan.closeByDate || '');
@@ -366,8 +406,10 @@ const PlanRow: React.FC<{
     setNote(plan.note ?? '');
   }, [
     plan.id,
+    plan.status,
     plan.academicYear,
     plan.name,
+    plan.accountingCode,
     plan.budgetTotal,
     plan.spentTotal,
     plan.closeByDate,
@@ -376,15 +418,40 @@ const PlanRow: React.FC<{
   ]);
 
   const yearList = useMemo(() => yearOptions(), []);
+  const alertText = useMemo(
+    () => closeDateAlertLabel({ ...plan, status, closeByDate } as BudgetPlan),
+    [plan.id, plan.academicYear, plan.name, plan.accountingCode, plan.budgetTotal, plan.spentTotal, plan.closureRequirements, plan.note, status, closeByDate]
+  );
+
   const rowValid =
     name.trim() &&
     academicYear.trim() &&
+    accountingCode.trim() &&
     closeByDate.trim() &&
     ISO_DATE.test(closeByDate.trim()) &&
     closureRequirements.trim();
 
+  const rowTint =
+    status === 'closed'
+      ? 'opacity-70 bg-slate-50/50'
+      : alertText?.includes('逾期')
+        ? 'bg-red-50/40 border-l-4 border-l-red-400'
+        : alertText
+          ? 'bg-amber-50/40 border-l-4 border-l-amber-400'
+          : '';
+
   return (
-    <tr className="hover:bg-slate-50/80">
+    <tr className={`hover:bg-slate-50/80 ${rowTint}`}>
+      <td className="px-3 py-2 align-top">
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as BudgetPlanStatus)}
+          className="w-full border border-slate-200 rounded px-2 py-1 text-xs"
+        >
+          <option value="active">進行中</option>
+          <option value="closed">已結案</option>
+        </select>
+      </td>
       <td className="px-3 py-2 align-top">
         <select
           value={academicYear}
@@ -407,18 +474,37 @@ const PlanRow: React.FC<{
       </td>
       <td className="px-3 py-2 align-top">
         <input
+          value={accountingCode}
+          onChange={(e) => setAccountingCode(e.target.value)}
+          className="w-full border border-slate-200 rounded px-2 py-1 text-sm font-mono"
+        />
+      </td>
+      <td className="px-3 py-2 align-top">
+        <input
           type="date"
           value={closeByDate}
           onChange={(e) => setCloseByDate(e.target.value)}
           className="w-full border border-slate-200 rounded px-2 py-1 text-sm"
         />
       </td>
+      <td className="px-3 py-2 align-top text-xs">
+        {status === 'closed' ? (
+          <span className="text-slate-400">—</span>
+        ) : alertText ? (
+          <span className={`inline-flex items-center gap-1 font-medium ${alertText.includes('逾期') ? 'text-red-700' : 'text-amber-800'}`}>
+            <AlertTriangle size={14} className="shrink-0" />
+            {alertText}
+          </span>
+        ) : (
+          <span className="text-slate-400">—</span>
+        )}
+      </td>
       <td className="px-3 py-2 align-top">
         <textarea
           value={closureRequirements}
           onChange={(e) => setClosureRequirements(e.target.value)}
           rows={2}
-          className="w-full border border-slate-200 rounded px-2 py-1 text-sm min-w-[160px]"
+          className="w-full border border-slate-200 rounded px-2 py-1 text-sm min-w-[140px]"
         />
       </td>
       <td className="px-3 py-2 align-top">
@@ -459,8 +545,10 @@ const PlanRow: React.FC<{
             onClick={() =>
               onSave({
                 id: plan.id,
+                status,
                 academicYear,
                 name,
+                accountingCode,
                 budgetTotal: Number(budgetTotal) || 0,
                 spentTotal: Number(spentTotal) || 0,
                 closeByDate,

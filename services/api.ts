@@ -398,14 +398,19 @@ export async function getBudgetPlans(academicYear?: string): Promise<BudgetPlan[
     const data = d.data();
     const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
     const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
+    const st = data.status;
+    const statusParsed =
+      st === 'closed' || st === 'active' ? st : undefined;
     return {
       id: d.id,
       academicYear: String(data.academicYear ?? '').trim(),
       name: data.name ?? '',
+      accountingCode: data.accountingCode != null ? String(data.accountingCode) : '',
       budgetTotal: numFromFirestore(data.budgetTotal),
       spentTotal: numFromFirestore(data.spentTotal),
       closeByDate: data.closeByDate != null ? String(data.closeByDate) : '',
       closureRequirements: data.closureRequirements != null ? String(data.closureRequirements) : '',
+      status: statusParsed,
       note: data.note ?? '',
       createdAt,
       updatedAt,
@@ -428,10 +433,12 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
   const data: DocumentData = {
     academicYear: String(payload.academicYear ?? '').trim(),
     name: payload.name ?? '',
+    accountingCode: String(payload.accountingCode ?? '').trim(),
     budgetTotal,
     spentTotal,
     closeByDate: String(payload.closeByDate ?? '').trim(),
     closureRequirements: String(payload.closureRequirements ?? '').trim(),
+    status: payload.status === 'closed' ? 'closed' : 'active',
     note: payload.note ?? '',
     updatedAt: serverTimestamp(),
   };

@@ -115,10 +115,12 @@ const store = {
       id: 'sandbox-bp-1',
       academicYear: '114',
       name: '範例：本土語補助',
+      accountingCode: '5010-01',
       budgetTotal: 50000,
       spentTotal: 12000,
       closeByDate: '2026-06-30',
       closureRequirements: '完成核銷並繳交成果報告',
+      status: 'active',
       note: 'Sandbox 示範',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -286,11 +288,15 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
     id,
     academicYear: String(payload.academicYear ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].academicYear : ''),
     name: payload.name ?? '',
+    accountingCode:
+      String(payload.accountingCode ?? '').trim() ||
+      (idx >= 0 ? store.budgetPlans[idx].accountingCode : ''),
     budgetTotal: Number(payload.budgetTotal) >= 0 ? Number(payload.budgetTotal) : 0,
     spentTotal: Number(payload.spentTotal) >= 0 ? Number(payload.spentTotal) : 0,
     closeByDate: String(payload.closeByDate ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].closeByDate : ''),
     closureRequirements:
       String(payload.closureRequirements ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].closureRequirements : ''),
+    status: payload.status === 'closed' ? 'closed' : 'active',
     note: payload.note ?? '',
     createdAt: idx >= 0 ? store.budgetPlans[idx].createdAt ?? now : now,
     updatedAt: now,

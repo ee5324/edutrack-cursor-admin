@@ -227,21 +227,28 @@ export interface Vendor {
   qrcodeUrl?: string; // 聯繫方式 QR Code 圖片網址或 data URL (base64)
 }
 
-/** 計畫／預算：核配額度與已支出，剩餘由前端計算 */
+/** 專案狀態：已結案者不再列入側邊「結案將屆」警示 */
+export type BudgetPlanStatus = 'active' | 'closed';
+
+/** 計畫專案／預算：核配額度與已支出隨進程更新，剩餘由前端計算 */
 export interface BudgetPlan {
   id: string;
   /** 學年度（例：114，與校務慣用民國年學年一致） */
   academicYear: string;
   /** 計畫名稱 */
   name: string;
+  /** 會計代碼（請與主計／會計科目一致） */
+  accountingCode: string;
   /** 核配／計畫總額（元） */
   budgetTotal: number;
-  /** 已支出／已動用（元） */
+  /** 已支出／已動用（元），執行中隨進度更新 */
   spentTotal: number;
   /** 計畫結案日期 YYYY-MM-DD */
   closeByDate: string;
   /** 結案要求（應達成項目、文件、核銷等說明） */
   closureRequirements: string;
+  /** 進行中／已結案（結案後不列入導覽警示） */
+  status?: BudgetPlanStatus;
   note?: string;
   createdAt?: string;
   updatedAt?: string;

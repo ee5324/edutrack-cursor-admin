@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award, Wallet } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award, Wallet, FlaskConical } from 'lucide-react';
 import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -8,6 +8,10 @@ interface LayoutProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   archiveCount?: number;
+  /** 計畫專案：結案日 30 天內或已逾期之筆數（進行中計畫） */
+  budgetPlansAlertCount?: number;
+  /** 上述筆數中是否含「已逾期」 */
+  budgetPlansAlertOverdue?: boolean;
   user?: User | null;
   onSignOut?: () => void;
 }
@@ -27,7 +31,16 @@ interface MenuItemGroup {
   children: { id: string; label: string }[];
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archiveCount, user, onSignOut }) => {
+const Layout: React.FC<LayoutProps> = ({
+  children,
+  activeTab,
+  onTabChange,
+  archiveCount,
+  budgetPlansAlertCount = 0,
+  budgetPlansAlertOverdue = false,
+  user,
+  onSignOut,
+}) => {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [nativeLangOpen, setNativeLangOpen] = useState(true);
 
@@ -46,7 +59,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
   const menuItemsFlat: MenuItemFlat[] = [
     { id: 'calendar', label: '行政行事曆', icon: CalendarDays },
     { id: 'student-roster', label: '學生名單', icon: Users },
-    { id: 'budget-plans', label: '計畫預算', icon: Wallet },
+    { id: 'budget-plans', label: '計畫專案', icon: Wallet },
     { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
     { id: 'exam-submissions', label: '段考提報', icon: Award },
@@ -66,7 +79,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
     return flat?.label ?? '';
   };
 
-  /** 選單順序：行政行事曆、學生名單、計畫預算，其餘依 menuItemsFlat 順序；巢狀群組插在第三項之後 */
+  /** 選單順序：行政行事曆、學生名單、計畫專案，其餘依 menuItemsFlat 順序；巢狀群組插在第三項之後 */
   const menuItemsFirst = menuItemsFlat.filter(
     (i) => i.id === 'calendar' || i.id === 'student-roster' || i.id === 'budget-plans'
   );
@@ -76,12 +89,25 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
 
   const navContent = (
     <nav className="flex flex-col gap-0.5 w-full py-3">
-      {/* 行政行事曆、學生名單、計畫預算 */}
+      {/* 行政行事曆、學生名單、計畫專案 */}
       {menuItemsFirst.map((item) => {
         const Icon = item.icon;
+        const isBudget = item.id === 'budget-plans';
+        const budgetN = isBudget ? budgetPlansAlertCount : 0;
+        const showArchiveBadge = !isBudget && item.badge != null && item.badge > 0;
+        const showBudgetBadge = isBudget && budgetN > 0;
+        const badgeNum = isBudget ? budgetN : item.badge ?? 0;
+        const budgetBadgeClass =
+          budgetPlansAlertOverdue ? 'bg-red-500' : 'bg-amber-500';
         return (
           <button
             key={item.id}
+            type="button"
+            title={
+              isBudget && showBudgetBadge
+                ? `有 ${budgetN} 筆計畫已逾期或距結案日 30 天內（進行中）`
+                : undefined
+            }
             onClick={() => {
               onTabChange(item.id);
               setIsNavOpen(false);
@@ -94,9 +120,16 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, archi
           >
             <Icon size={18} className="flex-shrink-0" />
             <span className="truncate flex-1">{item.label}</span>
-            {item.badge != null && item.badge > 0 && (
+            {showArchiveBadge && (
               <span className="flex-shrink-0 min-w-[1.25rem] text-center text-xs bg-amber-500 text-white rounded-full px-1.5">
                 {item.badge}
+              </span>
+            )}
+            {showBudgetBadge && (
+              <span
+                className={`flex-shrink-0 min-w-[1.25rem] text-center text-xs ${budgetBadgeClass} text-white rounded-full px-1.5 font-semibold`}
+              >
+                {badgeNum > 99 ? '99+' : badgeNum}
               </span>
             )}
           </button>
