@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award, Wallet, FlaskConical } from 'lucide-react';
+import { Menu, X, ClipboardList, Settings, CalendarDays, Trophy, Store, Archive, LogOut, Map, FileText, ChevronDown, ChevronRight, Users, Award, Wallet, FlaskConical, Banknote } from 'lucide-react';
 import { isSandbox, isPinBypassActive, setPinBypass } from '../services/sandboxStore';
 import type { User } from 'firebase/auth';
 
@@ -60,6 +60,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'calendar', label: '行政行事曆', icon: CalendarDays },
     { id: 'student-roster', label: '學生名單', icon: Users },
     { id: 'budget-plans', label: '計畫專案', icon: Wallet },
+    { id: 'budget-advances', label: '計畫代墊', icon: Banknote },
     { id: 'campus-map', label: '校園平面圖', icon: Map },
     { id: 'awards', label: '頒獎通知', icon: Trophy },
     { id: 'exam-submissions', label: '段考提報', icon: Award },
@@ -79,17 +80,25 @@ const Layout: React.FC<LayoutProps> = ({
     return flat?.label ?? '';
   };
 
-  /** 選單順序：行政行事曆、學生名單、計畫專案，其餘依 menuItemsFlat 順序；巢狀群組插在第三項之後 */
+  /** 選單順序：行政行事曆、學生名單、計畫專案、計畫代墊，其餘依 menuItemsFlat 順序；巢狀群組插在上述之後 */
   const menuItemsFirst = menuItemsFlat.filter(
-    (i) => i.id === 'calendar' || i.id === 'student-roster' || i.id === 'budget-plans'
+    (i) =>
+      i.id === 'calendar' ||
+      i.id === 'student-roster' ||
+      i.id === 'budget-plans' ||
+      i.id === 'budget-advances'
   );
   const menuItemsRest = menuItemsFlat.filter(
-    (i) => i.id !== 'calendar' && i.id !== 'student-roster' && i.id !== 'budget-plans'
+    (i) =>
+      i.id !== 'calendar' &&
+      i.id !== 'student-roster' &&
+      i.id !== 'budget-plans' &&
+      i.id !== 'budget-advances'
   );
 
   const navContent = (
     <nav className="flex flex-col gap-0.5 w-full py-3">
-      {/* 行政行事曆、學生名單、計畫專案 */}
+      {/* 行政行事曆、學生名單、計畫專案、計畫代墊 */}
       {menuItemsFirst.map((item) => {
         const Icon = item.icon;
         const isBudget = item.id === 'budget-plans';

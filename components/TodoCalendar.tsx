@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Plus, User, Trash2, CheckCircle, Clock, Loader2, FileText, MessageSquare, PhoneIncoming, ShieldCheck, Sun, Moon, FileCheck, List, Layers, X } from 'lucide-react';
-import { TodoItem, Attachment } from '../types';
+import { Calendar, ChevronLeft, ChevronRight, Plus, User, Trash2, CheckCircle, Clock, Loader2, FileText, MessageSquare, PhoneIncoming, ShieldCheck, Sun, Moon, FileCheck, List, Layers, X, Repeat } from 'lucide-react';
+import { TodoItem, Attachment, MonthlyRecurringTodoRule } from '../types';
 import Modal from './Modal';
 import DutyListModal from './modals/DutyListModal';
 import BatchDutyModal from './modals/BatchDutyModal';
 import SeriesViewModal from './modals/SeriesViewModal';
 import EditTodoModal from './modals/EditTodoModal';
-import { getTodos, saveTodo, saveBatchTodos, deleteTodo, cancelSeries as apiCancelSeries, toggleTodoStatus, uploadAttachment } from '../services/api';
+import MonthlyRecurringModal from './modals/MonthlyRecurringModal';
+import { getTodos, saveTodo, saveBatchTodos, deleteTodo, cancelSeries as apiCancelSeries, toggleTodoStatus, uploadAttachment, getMonthlyRecurringTodoRules, updateMonthlyRecurringMonthStatus } from '../services/api';
+import { ruleMatchesCalendarDate, statusForRuleOnDate, yearMonthKeyFromDate } from '../utils/monthlyRecurringTodos';
 
 const TodoCalendar: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -16,6 +18,7 @@ const TodoCalendar: React.FC = () => {
   // Data States
   const [todos, setTodos] = useState<TodoItem[]>([]); 
   const [memos, setMemos] = useState<TodoItem[]>([]);
+  const [monthlyRecurringRules, setMonthlyRecurringRules] = useState<MonthlyRecurringTodoRule[]>([]);
   
   const [loading, setLoading] = useState(false);
   
@@ -29,6 +32,7 @@ const TodoCalendar: React.FC = () => {
 
   const [isDutyListOpen, setIsDutyListOpen] = useState(false);
   const [isBatchDutyModalOpen, setIsBatchDutyModalOpen] = useState(false);
+  const [isMonthlyRecurringOpen, setIsMonthlyRecurringOpen] = useState(false);
 
   // File Upload State
   const [uploading, setUploading] = useState<'individual' | 'common' | null>(null);
@@ -41,9 +45,10 @@ const TodoCalendar: React.FC = () => {
   const fetchTodos = async () => {
     setLoading(true);
     try {
-      const allItems = await getTodos();
+      const [allItems, recurring] = await Promise.all([getTodos(), getMonthlyRecurringTodoRules()]);
       setTodos(allItems.filter((t: TodoItem) => t.type !== 'memo'));
       setMemos(allItems.filter((t: TodoItem) => t.type === 'memo'));
+      setMonthlyRecurringRules(recurring);
     } catch (e) {
       console.error(e);
       showModal('錯誤', '無法讀取待辦事項', 'danger');
@@ -85,6 +90,18 @@ const TodoCalendar: React.FC = () => {
     if (diffDays <= 7 && (todo.priority === 'High' || todo.priority === 'Medium')) return 'warning';
     return 'normal';
   };
+
+  const recurringAsTodoForUrgency = (rule: MonthlyRecurringTodoRule, dateStr: string, st: 'pending' | 'done' | 'cancelled'): TodoItem => ({
+    id: rule.id,
+    academicYear: '114',
+    date: dateStr,
+    title: rule.title,
+    type: rule.type,
+    status: st === 'cancelled' ? 'cancelled' : st === 'done' ? 'done' : 'pending',
+    priority: rule.priority,
+    contacts: [],
+    attachments: [],
+  });
 
   const existingTopics = Array.from(new Set(todos.map(t => t.topic).filter(Boolean)));
 
@@ -351,6 +368,28 @@ const TodoCalendar: React.FC = () => {
       await toggleTodoStatus({ id: todo.id!, newStatus });
   };
 
+  const toggleRecurringMonthDone = async (rule: MonthlyRecurringTodoRule, selected: Date) => {
+    const ym = yearMonthKeyFromDate(selected);
+    const cur = statusForRuleOnDate(rule, selected);
+    const next: 'pending' | 'done' = cur === 'done' ? 'pending' : 'done';
+    setMonthlyRecurringRules((prev) =>
+      prev.map((r) => {
+        if (r.id !== rule.id) return r;
+        const mc = { ...(r.monthCompletions ?? {}) };
+        if (next === 'pending') delete mc[ym];
+        else mc[ym] = 'done';
+        return { ...r, monthCompletions: mc };
+      })
+    );
+    try {
+      await updateMonthlyRecurringMonthStatus({ id: rule.id, yearMonth: ym, status: next });
+    } catch (e) {
+      console.error(e);
+      await fetchTodos();
+      showModal('錯誤', '無法更新每月事項狀態', 'danger');
+    }
+  };
+
   const showModal = (title: string, content: React.ReactNode, type: any, onConfirm?: () => void) => {
     setModalState({ isOpen: true, title, content, type, onConfirm });
   };
@@ -381,6 +420,8 @@ const TodoCalendar: React.FC = () => {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDateYMD(new Date(year, month, day));
+      const cellDate = new Date(year, month, day);
+      const dayRecurring = monthlyRecurringRules.filter((r) => ruleMatchesCalendarDate(r, cellDate));
       const dayTodos = todos.filter(t => t.date === dateStr && t.type !== 'duty');
       const dayDuties = todos.filter(t => t.date === dateStr && t.type === 'duty');
       
@@ -389,8 +430,12 @@ const TodoCalendar: React.FC = () => {
       const isVoucherDay = dateStr === voucherReminderDate;
       
       let dailyUrgency = 'none';
-      if (dayTodos.some(t => getUrgencyLevel(t) === 'critical')) dailyUrgency = 'critical';
-      else if (dayTodos.some(t => getUrgencyLevel(t) === 'warning')) dailyUrgency = 'warning';
+      const urgencyCandidates = [
+        ...dayTodos.map((t) => getUrgencyLevel(t)),
+        ...dayRecurring.map((r) => getUrgencyLevel(recurringAsTodoForUrgency(r, dateStr, statusForRuleOnDate(r, cellDate)))),
+      ];
+      if (urgencyCandidates.includes('critical')) dailyUrgency = 'critical';
+      else if (urgencyCandidates.includes('warning')) dailyUrgency = 'warning';
 
       days.push(
         <div 
@@ -426,6 +471,21 @@ const TodoCalendar: React.FC = () => {
           )}
 
           <div className="space-y-1">
+             {dayRecurring.map((r) => {
+               const st = statusForRuleOnDate(r, cellDate);
+               const done = st === 'done';
+               return (
+                 <div
+                   key={`mr-${r.id}`}
+                   className={`text-xs rounded px-1 py-0.5 break-words whitespace-normal leading-tight flex items-center gap-0.5 ${
+                     done ? 'bg-gray-100 text-gray-400 line-through' : 'bg-teal-50 text-teal-800 border border-teal-100'
+                   }`}
+                 >
+                   <Repeat size={10} className="shrink-0 opacity-70" />
+                   {r.title}
+                 </div>
+               );
+             })}
              {dayTodos.map((todo, idx) => (
                  <div key={idx} className={`text-xs rounded px-1 py-0.5 break-words whitespace-normal leading-tight ${
                      todo.status === 'done' ? 'bg-gray-100 text-gray-400 line-through' :
@@ -441,13 +501,24 @@ const TodoCalendar: React.FC = () => {
     return days;
   };
 
-  const selectedDayTodos = todos.filter(t => t.date === formatDateYMD(selectedDate))
-    .sort((a, b) => {
-        if (a.type === 'duty' && b.type !== 'duty') return -1;
-        if (a.type !== 'duty' && b.type === 'duty') return 1;
-        const priorityScore = { 'High': 3, 'Medium': 2, 'Low': 1 };
-        return priorityScore[b.priority] - priorityScore[a.priority];
-    });
+  const selectedDateStr = formatDateYMD(selectedDate);
+  const selectedDayTodos = todos.filter(t => t.date === selectedDateStr);
+  const selectedDayDuties = selectedDayTodos.filter((t) => t.type === 'duty');
+  const selectedDayOtherTodos = selectedDayTodos.filter((t) => t.type !== 'duty');
+  const recurringOnSelectedDate = monthlyRecurringRules.filter((r) => ruleMatchesCalendarDate(r, selectedDate));
+  const priorityScore = { High: 3, Medium: 2, Low: 1 } as const;
+  const mergedNonDuty = [
+    ...recurringOnSelectedDate.map((rule) => ({ kind: 'recurring' as const, rule })),
+    ...selectedDayOtherTodos.map((todo) => ({ kind: 'todo' as const, todo })),
+  ].sort((a, b) => {
+    const pa = a.kind === 'recurring' ? priorityScore[a.rule.priority] : priorityScore[a.todo.priority];
+    const pb = b.kind === 'recurring' ? priorityScore[b.rule.priority] : priorityScore[b.todo.priority];
+    return pb - pa;
+  });
+  const selectedDayOrdered = [
+    ...selectedDayDuties.map((todo) => ({ kind: 'todo' as const, todo })),
+    ...mergedNonDuty,
+  ];
 
   const sortedMemos = [...memos].sort((a, b) => {
       if (a.status === 'pending' && b.status === 'done') return -1;
@@ -488,6 +559,12 @@ const TodoCalendar: React.FC = () => {
         onSave={handleSaveBatchDuty}
         loading={loading}
         defaultDate={currentDate}
+      />
+
+      <MonthlyRecurringModal
+        isOpen={isMonthlyRecurringOpen}
+        onClose={() => setIsMonthlyRecurringOpen(false)}
+        onSaved={() => void fetchTodos()}
       />
 
       <SeriesViewModal
@@ -532,6 +609,13 @@ const TodoCalendar: React.FC = () => {
                </button>
                <button onClick={handleOpenBatchDuty} className="flex items-center px-2 py-1 bg-red-50 text-red-700 border border-red-200 text-xs rounded hover:bg-red-100 transition-colors" title="設定處室輪值">
                     <ShieldCheck size={14} className="mr-1"/> 輪值設定
+               </button>
+               <button
+                 onClick={() => setIsMonthlyRecurringOpen(true)}
+                 className="flex items-center px-2 py-1 bg-teal-50 text-teal-800 border border-teal-200 text-xs rounded hover:bg-teal-100 transition-colors"
+                 title="每月固定出現的事項，可指定西曆月份"
+               >
+                 <Repeat size={14} className="mr-1" /> 每月固定事項
                </button>
              </div>
           </div>
@@ -590,12 +674,65 @@ const TodoCalendar: React.FC = () => {
                  )}
 
                  {loading ? <div className="flex justify-center p-4"><Loader2 className="animate-spin text-blue-500"/></div> :
-                 selectedDayTodos.length === 0 && !isVoucherDaySelected ? (
+                 selectedDayOrdered.length === 0 && !isVoucherDaySelected ? (
                     <div className="text-center py-6 text-gray-400 text-sm">
                         <p>本日無事項</p>
                     </div>
                  ) : (
-                    selectedDayTodos.map(todo => {
+                    selectedDayOrdered.map((entry) => {
+                        if (entry.kind === 'recurring') {
+                          const rule = entry.rule;
+                          const st = statusForRuleOnDate(rule, selectedDate);
+                          const isDone = st === 'done';
+                          const isCancelled = st === 'cancelled';
+                          const urgency = getUrgencyLevel(recurringAsTodoForUrgency(rule, selectedDateStr, st));
+                          let urgencyClass = 'border-l-4 border-l-teal-400';
+                          if (urgency === 'critical') urgencyClass = 'border-l-4 border-l-red-500 shadow-red-100';
+                          else if (urgency === 'warning') urgencyClass = 'border-l-4 border-l-orange-400';
+                          else if (isDone) urgencyClass = 'border-l-4 border-l-gray-300 opacity-60';
+                          else if (isCancelled) urgencyClass = 'border-l-4 border-l-gray-300 bg-gray-100 opacity-60';
+                          return (
+                            <div
+                              key={`mr-${rule.id}`}
+                              className={`bg-white rounded border border-teal-100 shadow-sm p-2 relative group hover:shadow ${urgencyClass}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void toggleRecurringMonthDone(rule, selectedDate)}
+                                  className={`mt-0.5 flex-shrink-0 ${isDone ? 'text-green-500' : 'text-gray-300 hover:text-teal-500'}`}
+                                  title="標記本月已完成"
+                                >
+                                  {isDone ? <CheckCircle size={16} /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <h4
+                                    className={`font-bold text-sm text-gray-800 truncate flex items-center gap-1 ${isDone || isCancelled ? 'line-through text-gray-500' : ''}`}
+                                  >
+                                    <Repeat size={14} className="text-teal-600 shrink-0" />
+                                    {rule.title}
+                                  </h4>
+                                  <div className="flex flex-wrap gap-1 text-[10px] text-gray-500 mt-0.5">
+                                    <span className="bg-teal-50 text-teal-800 px-1 rounded border border-teal-100">每月固定</span>
+                                    <span className="bg-gray-100 px-1 rounded">{rule.type}</span>
+                                  </div>
+                                  {rule.memo ? <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{rule.memo}</p> : null}
+                                </div>
+                              </div>
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsMonthlyRecurringOpen(true)}
+                                  className="p-0.5 text-gray-400 hover:text-teal-600 text-[10px]"
+                                  title="至「每月固定事項」編輯"
+                                >
+                                  編輯規則
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                        const todo = entry.todo;
                         if (todo.type === 'duty') {
                              return (
                                 <div key={todo.id} className="bg-red-50 rounded border border-red-200 shadow-sm p-2 relative group hover:shadow">

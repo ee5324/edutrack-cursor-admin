@@ -212,6 +212,50 @@ export interface TodoItem {
   memo?: string;
 }
 
+/**
+ * 行政行事曆「每月固定事項」：設定一次後，依指定西曆月份自動出現在該月對應日期。
+ * months 為空陣列表示 1–12 月皆套用；否則僅在列出的月份（1–12）出現。
+ */
+export interface MonthlyRecurringTodoRule {
+  id: string;
+  title: string;
+  type: string;
+  priority: 'High' | 'Medium' | 'Low';
+  /** 每月第幾日（1–31）；若該月天數不足則落在該月最後一日 */
+  dayOfMonth: number;
+  /** 套用的西曆月份 1–12；空陣列 = 每月 */
+  months: number[];
+  memo?: string;
+  /** 依「年-月」記錄該月是否已完成（YYYY-MM） */
+  monthCompletions?: Record<string, 'pending' | 'done' | 'cancelled'>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 代墊紀錄狀態 */
+export type BudgetAdvanceStatus = 'outstanding' | 'settled' | 'cancelled';
+
+/**
+ * 與計畫專案連結的代墊金額紀錄（標明暫從哪一筆計畫預算脈絡代墊，便於日後核銷／歸還追蹤）
+ */
+export interface BudgetPlanAdvance {
+  id: string;
+  /** 關聯的計畫專案 id（edutrack_budget_plans） */
+  budgetPlanId: string;
+  /** 代墊金額（元，正數） */
+  amount: number;
+  /** 代墊日期 YYYY-MM-DD */
+  advanceDate: string;
+  /** 摘要說明（例：報名費、材料費） */
+  title: string;
+  /** 代墊人／受款對象等（選填） */
+  paidBy?: string;
+  status: BudgetAdvanceStatus;
+  memo?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // 廠商資料結構 (新)
 export interface Vendor {
   id: string;

@@ -20,7 +20,7 @@
 | 畫面／功能 | 前端元件 | 資料／API 層 |
 |------------|----------|--------------|
 | 左側選單、整體版面 | `components/Layout.tsx` | — |
-| 行政行事曆、待辦 | `components/TodoCalendar.tsx` | `services/api.ts`：getTodos, saveTodo, deleteTodo, uploadAttachment… |
+| 行政行事曆、待辦、**每月固定事項** | `components/TodoCalendar.tsx`、`components/modals/MonthlyRecurringModal.tsx` | `services/api.ts`：getTodos…；**每月固定** `getMonthlyRecurringTodoRules`、`saveMonthlyRecurringTodoRule`、`deleteMonthlyRecurringTodoRule`、`updateMonthlyRecurringMonthStatus`（Firestore `edutrack_monthly_recurring_todos`） |
 | 本土語點名單 · 點名單製作 | `AttendanceGenerator.tsx` | api：getHistory, getCourseStudents, saveCourseConfig, importFromSpreadsheet |
 | 本土語點名單 · 學生語言選修登錄 | `components/LanguageElectiveRoster.tsx` | api：getLanguageElectiveRoster, getAllLanguageElectiveRosters, saveLanguageElectiveRoster（Firestore `edutrack_language_elective`） |
 | 語言選修儀表板 | `components/LanguageElectiveDashboard.tsx` | 各語言年級人數、開班班別、**週課表**（由班別「上課時間」解析週一至週五） |
@@ -28,6 +28,7 @@
 | 廠商管理 | `VendorManager.tsx` | api：getVendors, saveVendor, deleteVendor |
 | 考卷存檔 | `components/ExamPapersTab.tsx` | api：getExamPaperFolders, getExamPapers… |
 | 計畫專案 | `components/BudgetPlansTab.tsx` | api：getBudgetPlans, saveBudgetPlan, deleteBudgetPlan（Firestore `edutrack_budget_plans`；學年度、會計代碼、結案日／結案要求、進行中隨進程更新已支出；已結案不列入導覽警示） |
+| **計畫代墊** | `components/BudgetAdvancesTab.tsx` | api：getBudgetPlanAdvances, saveBudgetPlanAdvance, deleteBudgetPlanAdvance（Firestore `edutrack_budget_plan_advances`；**連結 budgetPlanId** 標明代墊所屬計畫；刪除計畫時一併刪除其代墊紀錄） |
 | 事項列檔 | `ArchiveManager.tsx` | api：getArchiveTasks, saveArchiveTask, deleteArchiveTask |
 | 系統設定 | `App.tsx`（SettingsTab） | api：setupSystem |
 

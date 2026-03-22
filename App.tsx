@@ -13,6 +13,7 @@ import ExamPapersTab from './components/ExamPapersTab';
 import ArchiveManager from './ArchiveManager';
 import ExamSubmissionsTab from './components/ExamSubmissionsTab';
 import BudgetPlansTab from './components/BudgetPlansTab';
+import BudgetAdvancesTab from './components/BudgetAdvancesTab';
 import ExamSubmitPublicPage from './components/ExamSubmitPublicPage';
 import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -633,6 +634,8 @@ const App: React.FC = () => {
         return <LanguageElectiveRoster />;
       case 'budget-plans':
         return <BudgetPlansTab onDataChanged={refreshBudgetNavAlerts} />;
+      case 'budget-advances':
+        return <BudgetAdvancesTab />;
       case 'language-elective':
         return <LanguageElectiveRoster />;
       case 'language-dashboard':

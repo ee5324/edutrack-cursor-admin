@@ -78,6 +78,8 @@ export const COLLECTIONS = {
   VENDORS: `${COLLECTION_PREFIX}vendors`,
   ARCHIVE: `${COLLECTION_PREFIX}archive`,
   TODOS: `${COLLECTION_PREFIX}todos`,
+  /** 行政行事曆：每月固定出現的事項規則 */
+  MONTHLY_RECURRING_TODOS: `${COLLECTION_PREFIX}monthly_recurring_todos`,
   ALLOWED_USERS: `${COLLECTION_PREFIX}allowed_users`,
   EXAM_PAPERS: `${COLLECTION_PREFIX}exam_papers`,
   EXAM_PAPER_FOLDERS: `${COLLECTION_PREFIX}exam_paper_folders`,
@@ -95,6 +97,8 @@ export const COLLECTIONS = {
   EXAM_SYSTEM: `${COLLECTION_PREFIX}exam_system`,
   /** 計畫／預算（核配額、已支出、剩餘追蹤） */
   BUDGET_PLANS: `${COLLECTION_PREFIX}budget_plans`,
+  /** 計畫專案代墊紀錄 */
+  BUDGET_PLAN_ADVANCES: `${COLLECTION_PREFIX}budget_plan_advances`,
 } as const;
 
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */

@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan, BudgetPlanAdvance, MonthlyRecurringTodoRule } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -100,6 +100,7 @@ const store = {
       period: 'full',
     },
   ] as TodoItem[],
+  monthlyRecurringRules: [] as MonthlyRecurringTodoRule[],
   examPapers: [] as ExamPaper[],
   examPaperFolders: [] as ExamPaperFolder[],
   examPaperChecks: [] as ExamPaperCheck[],
@@ -126,6 +127,20 @@ const store = {
       updatedAt: new Date().toISOString(),
     },
   ] as BudgetPlan[],
+  budgetPlanAdvances: [
+    {
+      id: 'sandbox-adv-1',
+      budgetPlanId: 'sandbox-bp-1',
+      amount: 3200,
+      advanceDate: new Date().toISOString().slice(0, 10),
+      title: '範例：本土語競賽報名費代墊',
+      paidBy: '教學組',
+      status: 'outstanding',
+      memo: '待主計核銷後歸還',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ] as BudgetPlanAdvance[],
 };
 
 // --- Courses & Students ---
@@ -308,6 +323,43 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
 
 export function sandboxDeleteBudgetPlan(payload: { id: string }) {
   store.budgetPlans = store.budgetPlans.filter((p) => p.id !== payload.id);
+  store.budgetPlanAdvances = store.budgetPlanAdvances.filter((a) => a.budgetPlanId !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
+// --- Budget plan advances (代墊紀錄) ---
+export function sandboxGetBudgetPlanAdvances(): Promise<BudgetPlanAdvance[]> {
+  return Promise.resolve(
+    [...store.budgetPlanAdvances].sort((a, b) => (b.advanceDate || '').localeCompare(a.advanceDate || ''))
+  );
+}
+
+export function sandboxSaveBudgetPlanAdvance(
+  payload: Partial<BudgetPlanAdvance> & { budgetPlanId: string; amount: number; advanceDate: string; title: string }
+) {
+  const id = payload.id ?? uid();
+  const now = new Date().toISOString();
+  const idx = store.budgetPlanAdvances.findIndex((a) => a.id === id);
+  const st = payload.status === 'settled' || payload.status === 'cancelled' ? payload.status : 'outstanding';
+  const row: BudgetPlanAdvance = {
+    id,
+    budgetPlanId: String(payload.budgetPlanId).trim(),
+    amount: Math.max(0, Number(payload.amount) || 0),
+    advanceDate: String(payload.advanceDate).trim(),
+    title: String(payload.title).trim(),
+    paidBy: payload.paidBy != null ? String(payload.paidBy).trim() : '',
+    status: st,
+    memo: payload.memo ?? '',
+    createdAt: idx >= 0 ? store.budgetPlanAdvances[idx].createdAt ?? now : now,
+    updatedAt: now,
+  };
+  if (idx >= 0) store.budgetPlanAdvances[idx] = row;
+  else store.budgetPlanAdvances.unshift(row);
+  return Promise.resolve({ success: true, id });
+}
+
+export function sandboxDeleteBudgetPlanAdvance(payload: { id: string }) {
+  store.budgetPlanAdvances = store.budgetPlanAdvances.filter((a) => a.id !== payload.id);
   return Promise.resolve({ success: true });
 }
 
@@ -602,6 +654,57 @@ export function sandboxSaveBatchTodos(payload: { todos: Partial<TodoItem>[] }) {
 
 export function sandboxDeleteTodo(payload: { id: string }) {
   store.todos = store.todos.filter((t) => t.id !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
+// --- Monthly recurring calendar rules ---
+export function sandboxGetMonthlyRecurringTodoRules(): Promise<MonthlyRecurringTodoRule[]> {
+  return Promise.resolve(
+    [...store.monthlyRecurringRules].sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh-TW'))
+  );
+}
+
+export function sandboxSaveMonthlyRecurringTodoRule(
+  payload: Partial<MonthlyRecurringTodoRule> & { title: string; dayOfMonth: number }
+) {
+  const id = payload.id ?? uid();
+  const idx = store.monthlyRecurringRules.findIndex((r) => r.id === id);
+  let months = Array.isArray(payload.months) ? [...new Set(payload.months.filter((m) => m >= 1 && m <= 12))].sort((a, b) => a - b) : [];
+  if (months.length === 12) months = [];
+  const row: MonthlyRecurringTodoRule = {
+    id,
+    title: payload.title.trim(),
+    type: (payload.type as string) || '行政',
+    priority: payload.priority ?? 'Medium',
+    dayOfMonth: Math.min(31, Math.max(1, Math.floor(payload.dayOfMonth))),
+    months,
+    memo: payload.memo ?? '',
+    monthCompletions: payload.monthCompletions ?? (idx >= 0 ? store.monthlyRecurringRules[idx].monthCompletions ?? {} : {}),
+    createdAt: idx >= 0 ? store.monthlyRecurringRules[idx].createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (idx >= 0) store.monthlyRecurringRules[idx] = row;
+  else store.monthlyRecurringRules.push(row);
+  return Promise.resolve({ success: true, id });
+}
+
+export function sandboxDeleteMonthlyRecurringTodoRule(payload: { id: string }) {
+  store.monthlyRecurringRules = store.monthlyRecurringRules.filter((r) => r.id !== payload.id);
+  return Promise.resolve({ success: true });
+}
+
+export function sandboxUpdateMonthlyRecurringMonthStatus(payload: {
+  id: string;
+  yearMonth: string;
+  status: 'pending' | 'done' | 'cancelled';
+}) {
+  const r = store.monthlyRecurringRules.find((x) => x.id === payload.id);
+  if (!r) return Promise.resolve({ success: false });
+  const next = { ...(r.monthCompletions ?? {}) };
+  if (payload.status === 'pending') delete next[payload.yearMonth];
+  else next[payload.yearMonth] = payload.status;
+  r.monthCompletions = next;
+  r.updatedAt = new Date().toISOString();
   return Promise.resolve({ success: true });
 }
 

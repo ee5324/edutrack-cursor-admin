@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS } from './firebase';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, MonthlyRecurringTodoRule } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -38,6 +38,9 @@ import {
   sandboxGetBudgetPlans,
   sandboxSaveBudgetPlan,
   sandboxDeleteBudgetPlan,
+  sandboxGetBudgetPlanAdvances,
+  sandboxSaveBudgetPlanAdvance,
+  sandboxDeleteBudgetPlanAdvance,
   sandboxGetArchiveTasks,
   sandboxSaveArchiveTask,
   sandboxDeleteArchiveTask,
@@ -47,6 +50,10 @@ import {
   sandboxDeleteTodo,
   sandboxCancelSeries,
   sandboxToggleTodoStatus,
+  sandboxGetMonthlyRecurringTodoRules,
+  sandboxSaveMonthlyRecurringTodoRule,
+  sandboxDeleteMonthlyRecurringTodoRule,
+  sandboxUpdateMonthlyRecurringMonthStatus,
   sandboxGetExamPaperFolders,
   sandboxSaveExamPaperFolder,
   sandboxDeleteExamPaperFolder,
@@ -453,8 +460,88 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
 export async function deleteBudgetPlan(payload: { id: string }) {
   if (isSandbox()) return sandboxDeleteBudgetPlan(payload);
   const db = getDb();
-  if (db) await deleteDoc(doc(db, COLLECTIONS.BUDGET_PLANS, payload.id));
+  if (db) {
+    const advSnap = await getDocs(
+      query(collection(db, COLLECTIONS.BUDGET_PLAN_ADVANCES), where('budgetPlanId', '==', payload.id))
+    );
+    for (const d of advSnap.docs) {
+      await deleteDoc(d.ref);
+    }
+    await deleteDoc(doc(db, COLLECTIONS.BUDGET_PLANS, payload.id));
+  }
   return { success: true };
+}
+
+function parseAdvanceStatus(v: unknown): BudgetAdvanceStatus {
+  if (v === 'settled' || v === 'cancelled' || v === 'outstanding') return v;
+  return 'outstanding';
+}
+
+export async function getBudgetPlanAdvances(_filter?: { budgetPlanId?: string }): Promise<BudgetPlanAdvance[]> {
+  if (isSandbox()) {
+    const list = await sandboxGetBudgetPlanAdvances();
+    const pid = _filter?.budgetPlanId?.trim();
+    if (!pid) return list;
+    return list.filter((a) => a.budgetPlanId === pid);
+  }
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(
+    query(collection(db, COLLECTIONS.BUDGET_PLAN_ADVANCES), orderBy('advanceDate', 'desc'))
+  );
+  let rows = snap.docs.map((d) => {
+    const data = d.data();
+    const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
+    const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
+    return {
+      id: d.id,
+      budgetPlanId: String(data.budgetPlanId ?? '').trim(),
+      amount: numFromFirestore(data.amount),
+      advanceDate: data.advanceDate != null ? String(data.advanceDate) : '',
+      title: data.title != null ? String(data.title) : '',
+      paidBy: data.paidBy != null ? String(data.paidBy) : '',
+      status: parseAdvanceStatus(data.status),
+      memo: data.memo != null ? String(data.memo) : '',
+      createdAt,
+      updatedAt,
+    } as BudgetPlanAdvance;
+  });
+  const pid = _filter?.budgetPlanId?.trim();
+  if (pid) rows = rows.filter((a) => a.budgetPlanId === pid);
+  return rows;
+}
+
+export async function saveBudgetPlanAdvance(
+  payload: Partial<BudgetPlanAdvance> & { budgetPlanId: string; amount: number; advanceDate: string; title: string }
+) {
+  if (isSandbox()) return sandboxSaveBudgetPlanAdvance(payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = payload.id ?? (crypto.randomUUID?.() ?? `bpadv-${Date.now()}`);
+  const amount = Math.max(0, numFromFirestore(payload.amount));
+  const data: DocumentData = {
+    budgetPlanId: String(payload.budgetPlanId).trim(),
+    amount,
+    advanceDate: String(payload.advanceDate ?? '').trim(),
+    title: String(payload.title ?? '').trim(),
+    paidBy: String(payload.paidBy ?? '').trim(),
+    status: parseAdvanceStatus(payload.status),
+    memo: payload.memo ?? '',
+    updatedAt: serverTimestamp(),
+  };
+  const existing = await getDoc(doc(db, COLLECTIONS.BUDGET_PLAN_ADVANCES, id));
+  if (!existing.exists()) {
+    data.createdAt = serverTimestamp();
+  }
+  await setDoc(doc(db, COLLECTIONS.BUDGET_PLAN_ADVANCES, id), data, { merge: true });
+  return { success: true as const, id };
+}
+
+export async function deleteBudgetPlanAdvance(payload: { id: string }) {
+  if (isSandbox()) return sandboxDeleteBudgetPlanAdvance(payload);
+  const db = getDb();
+  if (db) await deleteDoc(doc(db, COLLECTIONS.BUDGET_PLAN_ADVANCES, payload.id));
+  return { success: true as const };
 }
 
 // --- Archive (Firestore) ---
@@ -659,6 +746,106 @@ export async function toggleTodoStatus(payload: { id: string; newStatus: TodoIte
   if (!db) return { success: true };
   await updateDoc(doc(db, COLLECTIONS.TODOS, payload.id), { status: payload.newStatus });
   return { success: true };
+}
+
+// --- 行政行事曆：每月固定事項規則 ---
+
+function recurringRuleFromDoc(id: string, data: DocumentData): MonthlyRecurringTodoRule {
+  const months = Array.isArray(data.months)
+    ? (data.months as unknown[])
+        .map((x) => Number(x))
+        .filter((n) => n >= 1 && n <= 12)
+    : [];
+  const mc = data.monthCompletions && typeof data.monthCompletions === 'object' ? (data.monthCompletions as Record<string, string>) : {};
+  const completions: Record<string, 'pending' | 'done' | 'cancelled'> = {};
+  for (const [k, v] of Object.entries(mc)) {
+    if (v === 'done' || v === 'cancelled' || v === 'pending') completions[k] = v;
+  }
+  return {
+    id,
+    title: String(data.title ?? ''),
+    type: String(data.type ?? '行政'),
+    priority: ['High', 'Medium', 'Low'].includes(data.priority as string) ? (data.priority as MonthlyRecurringTodoRule['priority']) : 'Medium',
+    dayOfMonth: Math.min(31, Math.max(1, Number(data.dayOfMonth) || 1)),
+    months,
+    memo: data.memo != null ? String(data.memo) : '',
+    monthCompletions: Object.keys(completions).length ? completions : undefined,
+    createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? (typeof data.createdAt === 'string' ? data.createdAt : undefined),
+    updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? (typeof data.updatedAt === 'string' ? data.updatedAt : undefined),
+  };
+}
+
+export async function getMonthlyRecurringTodoRules(): Promise<MonthlyRecurringTodoRule[]> {
+  if (isSandbox()) return sandboxGetMonthlyRecurringTodoRules();
+  const db = getDb();
+  if (!db) return [];
+  const snap = await getDocs(collection(db, COLLECTIONS.MONTHLY_RECURRING_TODOS));
+  return snap.docs
+    .map((d) => recurringRuleFromDoc(d.id, d.data()))
+    .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'zh-TW'));
+}
+
+export async function saveMonthlyRecurringTodoRule(
+  payload: Partial<MonthlyRecurringTodoRule> & { title: string; dayOfMonth: number }
+) {
+  if (isSandbox()) return sandboxSaveMonthlyRecurringTodoRule(payload);
+  const db = getDb();
+  const id = payload.id ?? (crypto.randomUUID?.() ?? `mr-${Date.now()}`);
+  let months = Array.isArray(payload.months)
+    ? [...new Set(payload.months.filter((m) => m >= 1 && m <= 12))].sort((a, b) => a - b)
+    : [];
+  if (months.length === 12) months = [];
+  const existingSnap = payload.id && db ? await getDoc(doc(db, COLLECTIONS.MONTHLY_RECURRING_TODOS, id)) : null;
+  const prevCompletions =
+    existingSnap?.exists() && existingSnap.data().monthCompletions && typeof existingSnap.data().monthCompletions === 'object'
+      ? (existingSnap.data().monthCompletions as Record<string, string>)
+      : {};
+
+  const docBody: DocumentData = {
+    id,
+    title: payload.title.trim(),
+    type: payload.type ?? '行政',
+    priority: payload.priority ?? 'Medium',
+    dayOfMonth: Math.min(31, Math.max(1, Math.floor(Number(payload.dayOfMonth)) || 1)),
+    months,
+    memo: payload.memo ?? '',
+    monthCompletions: payload.monthCompletions !== undefined ? payload.monthCompletions : prevCompletions,
+    updatedAt: serverTimestamp(),
+  };
+  if (!payload.id) docBody.createdAt = serverTimestamp();
+
+  if (db) await setDoc(doc(db, COLLECTIONS.MONTHLY_RECURRING_TODOS, id), docBody, { merge: true });
+  return { success: true as const, id };
+}
+
+export async function deleteMonthlyRecurringTodoRule(payload: { id: string }) {
+  if (isSandbox()) return sandboxDeleteMonthlyRecurringTodoRule(payload);
+  const db = getDb();
+  if (db) await deleteDoc(doc(db, COLLECTIONS.MONTHLY_RECURRING_TODOS, payload.id));
+  return { success: true as const };
+}
+
+export async function updateMonthlyRecurringMonthStatus(payload: {
+  id: string;
+  yearMonth: string;
+  status: 'pending' | 'done' | 'cancelled';
+}) {
+  if (isSandbox()) return sandboxUpdateMonthlyRecurringMonthStatus(payload);
+  const db = getDb();
+  if (!db) return { success: false as const };
+  const ref = doc(db, COLLECTIONS.MONTHLY_RECURRING_TODOS, payload.id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return { success: false as const };
+  const data = snap.data();
+  const prev = (data.monthCompletions && typeof data.monthCompletions === 'object' ? data.monthCompletions : {}) as Record<
+    string,
+    string
+  >;
+  const next = { ...prev };
+  if (payload.status === 'pending') delete next[payload.yearMonth];
+  else next[payload.yearMonth] = payload.status;
+  await updateDoc(ref, { monthCompletions: next, updatedAt: serverTimestamp() });
+  return { success: true as const };
 }
 
 /** 附檔上傳：仍經由 GAS 寫入 Google Drive */

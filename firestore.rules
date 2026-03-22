@@ -165,6 +165,9 @@ service cloud.firestore {
     match /edutrack_todos/{id} {
       allow read, write: if isEduTrackAllowedUser();
     }
+    match /edutrack_monthly_recurring_todos/{id} {
+      allow read, write: if isEduTrackAllowedUser();
+    }
     match /edutrack_exam_papers/{id} {
       allow read, write: if isEduTrackAllowedUser();
     }
@@ -218,6 +221,9 @@ service cloud.firestore {
       allow read, write: if isEduTrackAllowedUser();
     }
     match /edutrack_budget_plans/{id} {
+      allow read, write: if isEduTrackAllowedUser();
+    }
+    match /edutrack_budget_plan_advances/{id} {
       allow read, write: if isEduTrackAllowedUser();
     }
     
