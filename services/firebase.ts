@@ -101,5 +101,8 @@ export const COLLECTIONS = {
   BUDGET_PLAN_ADVANCES: `${COLLECTION_PREFIX}budget_plan_advances`,
 } as const;
 
+/** 計畫底下的巢狀支用／資料夾（子集合名稱，路徑：edutrack_budget_plans/{planId}/ledger_entries） */
+export const BUDGET_PLAN_LEDGER_SUBCOLLECTION = 'ledger_entries';
+
 /** 供 Firestore 規則使用：目前前綴（若你自訂前綴，規則裡的集合名要一致） */
 export const getCollectionPrefix = () => COLLECTION_PREFIX;

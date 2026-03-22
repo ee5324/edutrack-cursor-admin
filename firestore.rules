@@ -220,8 +220,11 @@ service cloud.firestore {
     match /edutrack_calendar_settings/{docId} {
       allow read, write: if isEduTrackAllowedUser();
     }
-    match /edutrack_budget_plans/{id} {
+    match /edutrack_budget_plans/{planId} {
       allow read, write: if isEduTrackAllowedUser();
+      match /ledger_entries/{entryId} {
+        allow read, write: if isEduTrackAllowedUser();
+      }
     }
     match /edutrack_budget_plan_advances/{id} {
       allow read, write: if isEduTrackAllowedUser();

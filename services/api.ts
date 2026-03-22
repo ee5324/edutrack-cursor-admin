@@ -17,11 +17,12 @@ import {
   orderBy,
   where,
   serverTimestamp,
+  writeBatch,
   type DocumentData,
 } from 'firebase/firestore';
-import { getDb, COLLECTIONS } from './firebase';
+import { getDb, COLLECTIONS, BUDGET_PLAN_LEDGER_SUBCOLLECTION } from './firebase';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, MonthlyRecurringTodoRule } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, MonthlyRecurringTodoRule } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -36,8 +37,13 @@ import {
   sandboxSaveVendor,
   sandboxDeleteVendor,
   sandboxGetBudgetPlans,
+  sandboxGetBudgetPlan,
   sandboxSaveBudgetPlan,
   sandboxDeleteBudgetPlan,
+  sandboxUpdateBudgetPlanSpentTotal,
+  sandboxGetBudgetPlanLedgerEntries,
+  sandboxSaveBudgetPlanLedgerEntry,
+  sandboxDeleteBudgetPlanLedgerEntry,
   sandboxGetBudgetPlanAdvances,
   sandboxSaveBudgetPlanAdvance,
   sandboxDeleteBudgetPlanAdvance,
@@ -392,6 +398,36 @@ function numFromFirestore(v: unknown, fallback = 0): number {
   return fallback;
 }
 
+function budgetPlanFromDoc(id: string, data: DocumentData): BudgetPlan {
+  const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
+  const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
+  const st = data.status;
+  const statusParsed = st === 'closed' || st === 'active' ? st : undefined;
+  return {
+    id,
+    academicYear: String(data.academicYear ?? '').trim(),
+    name: data.name ?? '',
+    accountingCode: data.accountingCode != null ? String(data.accountingCode) : '',
+    budgetTotal: numFromFirestore(data.budgetTotal),
+    spentTotal: numFromFirestore(data.spentTotal),
+    closeByDate: data.closeByDate != null ? String(data.closeByDate) : '',
+    closureRequirements: data.closureRequirements != null ? String(data.closureRequirements) : '',
+    status: statusParsed,
+    note: data.note ?? '',
+    createdAt,
+    updatedAt,
+  };
+}
+
+export async function getBudgetPlan(id: string): Promise<BudgetPlan | null> {
+  if (isSandbox()) return sandboxGetBudgetPlan(id);
+  const db = getDb();
+  if (!db) return null;
+  const snap = await getDoc(doc(db, COLLECTIONS.BUDGET_PLANS, id));
+  if (!snap.exists()) return null;
+  return budgetPlanFromDoc(snap.id, snap.data());
+}
+
 export async function getBudgetPlans(academicYear?: string): Promise<BudgetPlan[]> {
   if (isSandbox()) {
     const list = await sandboxGetBudgetPlans();
@@ -401,28 +437,7 @@ export async function getBudgetPlans(academicYear?: string): Promise<BudgetPlan[
   const db = getDb();
   if (!db) return [];
   const snap = await getDocs(query(collection(db, COLLECTIONS.BUDGET_PLANS), orderBy('updatedAt', 'desc')));
-  let rows = snap.docs.map((d) => {
-    const data = d.data();
-    const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
-    const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
-    const st = data.status;
-    const statusParsed =
-      st === 'closed' || st === 'active' ? st : undefined;
-    return {
-      id: d.id,
-      academicYear: String(data.academicYear ?? '').trim(),
-      name: data.name ?? '',
-      accountingCode: data.accountingCode != null ? String(data.accountingCode) : '',
-      budgetTotal: numFromFirestore(data.budgetTotal),
-      spentTotal: numFromFirestore(data.spentTotal),
-      closeByDate: data.closeByDate != null ? String(data.closeByDate) : '',
-      closureRequirements: data.closureRequirements != null ? String(data.closureRequirements) : '',
-      status: statusParsed,
-      note: data.note ?? '',
-      createdAt,
-      updatedAt,
-    } as BudgetPlan;
-  });
+  let rows = snap.docs.map((d) => budgetPlanFromDoc(d.id, d.data()));
   if (academicYear != null && academicYear.trim() !== '') {
     const y = academicYear.trim();
     rows = rows.filter((p) => p.academicYear === y);
@@ -461,6 +476,7 @@ export async function deleteBudgetPlan(payload: { id: string }) {
   if (isSandbox()) return sandboxDeleteBudgetPlan(payload);
   const db = getDb();
   if (db) {
+    await firebaseDeleteAllLedgerEntries(payload.id);
     const advSnap = await getDocs(
       query(collection(db, COLLECTIONS.BUDGET_PLAN_ADVANCES), where('budgetPlanId', '==', payload.id))
     );
@@ -470,6 +486,155 @@ export async function deleteBudgetPlan(payload: { id: string }) {
     await deleteDoc(doc(db, COLLECTIONS.BUDGET_PLANS, payload.id));
   }
   return { success: true };
+}
+
+async function firebaseDeleteAllLedgerEntries(planId: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const colRef = collection(db, COLLECTIONS.BUDGET_PLANS, planId, BUDGET_PLAN_LEDGER_SUBCOLLECTION);
+  const snap = await getDocs(colRef);
+  if (snap.empty) return;
+  let batch = writeBatch(db);
+  let n = 0;
+  for (const d of snap.docs) {
+    batch.delete(d.ref);
+    n++;
+    if (n >= 450) {
+      await batch.commit();
+      batch = writeBatch(db);
+      n = 0;
+    }
+  }
+  if (n > 0) await batch.commit();
+}
+
+function normalizeLedgerParentId(v: unknown): string | null {
+  if (v == null || v === '') return null;
+  return String(v);
+}
+
+function ledgerEntryFromDoc(planId: string, id: string, data: DocumentData): BudgetPlanLedgerEntry {
+  const kind: BudgetPlanLedgerKind = data.kind === 'expense' ? 'expense' : 'folder';
+  return {
+    id,
+    budgetPlanId: planId,
+    parentId: normalizeLedgerParentId(data.parentId),
+    kind,
+    title: String(data.title ?? ''),
+    amount: numFromFirestore(data.amount),
+    expenseDate: data.expenseDate != null ? String(data.expenseDate) : '',
+    memo: data.memo != null ? String(data.memo) : '',
+    order: Number(data.order) || 0,
+    createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? (typeof data.createdAt === 'string' ? data.createdAt : undefined),
+    updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() ?? (typeof data.updatedAt === 'string' ? data.updatedAt : undefined),
+  };
+}
+
+function collectLedgerSubtreeIds(entries: BudgetPlanLedgerEntry[], rootId: string): string[] {
+  const byParent = new Map<string | null, BudgetPlanLedgerEntry[]>();
+  for (const e of entries) {
+    const p = e.parentId ?? null;
+    if (!byParent.has(p)) byParent.set(p, []);
+    byParent.get(p)!.push(e);
+  }
+  const out: string[] = [];
+  const walk = (id: string) => {
+    out.push(id);
+    for (const c of byParent.get(id) ?? []) walk(c.id);
+  };
+  walk(rootId);
+  return out;
+}
+
+export async function getBudgetPlanLedgerEntries(planId: string): Promise<BudgetPlanLedgerEntry[]> {
+  if (isSandbox()) return sandboxGetBudgetPlanLedgerEntries(planId);
+  const db = getDb();
+  if (!db) return [];
+  const colRef = collection(db, COLLECTIONS.BUDGET_PLANS, planId, BUDGET_PLAN_LEDGER_SUBCOLLECTION);
+  const snap = await getDocs(query(colRef, orderBy('order', 'asc')));
+  const rows = snap.docs.map((d) => ledgerEntryFromDoc(planId, d.id, d.data()));
+  return rows.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-TW'));
+}
+
+async function nextLedgerSiblingOrder(planId: string, parentId: string | null, excludeId?: string): Promise<number> {
+  const all = await getBudgetPlanLedgerEntries(planId);
+  const sibs = all.filter((e) => (e.parentId ?? null) === (parentId ?? null) && e.id !== excludeId);
+  if (sibs.length === 0) return 0;
+  return Math.max(...sibs.map((s) => s.order), -1) + 1;
+}
+
+export async function saveBudgetPlanLedgerEntry(
+  planId: string,
+  payload: Partial<BudgetPlanLedgerEntry> & { title: string; kind: BudgetPlanLedgerKind }
+) {
+  if (isSandbox()) return sandboxSaveBudgetPlanLedgerEntry(planId, payload);
+  const db = getDb();
+  if (!db) throw new Error('Firebase 未初始化');
+  const id = payload.id ?? (crypto.randomUUID?.() ?? `bled-${Date.now()}`);
+  const existingRef = doc(db, COLLECTIONS.BUDGET_PLANS, planId, BUDGET_PLAN_LEDGER_SUBCOLLECTION, id);
+  const existingSnap = await getDoc(existingRef);
+  const prev = existingSnap.exists() ? ledgerEntryFromDoc(planId, id, existingSnap.data()) : null;
+  const parentId =
+    payload.parentId !== undefined
+      ? normalizeLedgerParentId(payload.parentId)
+      : (prev?.parentId ?? null);
+
+  let orderNum = payload.order;
+  if (orderNum === undefined || orderNum === null) {
+    orderNum = prev ? prev.order : await nextLedgerSiblingOrder(planId, parentId);
+  }
+
+  const kind: BudgetPlanLedgerKind = payload.kind === 'expense' ? 'expense' : 'folder';
+  const title = String(payload.title ?? '').trim();
+  if (!title) throw new Error('請填寫標題');
+  const amount = kind === 'expense' ? Math.max(0, numFromFirestore(payload.amount)) : 0;
+  const expenseDate =
+    kind === 'expense' ? String(payload.expenseDate ?? prev?.expenseDate ?? '').trim() : '';
+  const memo = payload.memo !== undefined ? String(payload.memo) : (prev?.memo ?? '');
+
+  const docBody: DocumentData = {
+    parentId,
+    kind,
+    title,
+    amount,
+    expenseDate,
+    memo,
+    order: Math.max(0, Number(orderNum) || 0),
+    updatedAt: serverTimestamp(),
+  };
+  if (!prev) docBody.createdAt = serverTimestamp();
+  await setDoc(existingRef, docBody, { merge: true });
+  return { success: true as const, id };
+}
+
+export async function deleteBudgetPlanLedgerEntry(planId: string, entryId: string) {
+  if (isSandbox()) return sandboxDeleteBudgetPlanLedgerEntry(planId, entryId);
+  const db = getDb();
+  if (!db) return { success: false as const };
+  const all = await getBudgetPlanLedgerEntries(planId);
+  const ids = collectLedgerSubtreeIds(all, entryId);
+  for (const eid of ids) {
+    await deleteDoc(doc(db, COLLECTIONS.BUDGET_PLANS, planId, BUDGET_PLAN_LEDGER_SUBCOLLECTION, eid));
+  }
+  return { success: true as const };
+}
+
+/** 加總計畫底下所有「支用」節點金額（不含資料夾） */
+export function sumBudgetPlanLedgerExpenses(entries: BudgetPlanLedgerEntry[]): number {
+  return entries.filter((e) => e.kind === 'expense').reduce((s, e) => s + (e.amount || 0), 0);
+}
+
+/** 僅更新計畫的已支出欄位（供支用明細加總同步） */
+export async function updateBudgetPlanSpentTotal(planId: string, spentTotal: number) {
+  if (isSandbox()) return sandboxUpdateBudgetPlanSpentTotal(planId, spentTotal);
+  const db = getDb();
+  if (!db) return { success: false as const };
+  const n = Math.max(0, numFromFirestore(spentTotal));
+  await updateDoc(doc(db, COLLECTIONS.BUDGET_PLANS, planId), {
+    spentTotal: n,
+    updatedAt: serverTimestamp(),
+  });
+  return { success: true as const };
 }
 
 function parseAdvanceStatus(v: unknown): BudgetAdvanceStatus {

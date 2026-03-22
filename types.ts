@@ -256,6 +256,29 @@ export interface BudgetPlanAdvance {
   updatedAt?: string;
 }
 
+/** 計畫底下支用明細樹狀節點：資料夾（分類）或實際支用紀錄 */
+export type BudgetPlanLedgerKind = 'folder' | 'expense';
+
+/** 存在 Firestore：`edutrack_budget_plans/{planId}/ledger_entries/{entryId}` */
+export interface BudgetPlanLedgerEntry {
+  id: string;
+  budgetPlanId: string;
+  /** 父節點 id；根層為 null */
+  parentId: string | null;
+  kind: BudgetPlanLedgerKind;
+  /** 資料夾名稱或支用摘要 */
+  title: string;
+  /** 支用金額（元）；資料夾為 0 */
+  amount: number;
+  /** 支用／入帳日期 YYYY-MM-DD（支用建議填寫） */
+  expenseDate?: string;
+  memo?: string;
+  /** 同層排序（遞增） */
+  order: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // 廠商資料結構 (新)
 export interface Vendor {
   id: string;

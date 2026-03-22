@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan, BudgetPlanAdvance, MonthlyRecurringTodoRule } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan, BudgetPlanAdvance, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, MonthlyRecurringTodoRule } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -141,6 +141,50 @@ const store = {
       updatedAt: new Date().toISOString(),
     },
   ] as BudgetPlanAdvance[],
+  /** 計畫專案底下巢狀支用／資料夾（key = planId） */
+  budgetPlanLedgerByPlanId: {
+    'sandbox-bp-1': [
+      {
+        id: 'led-f1',
+        budgetPlanId: 'sandbox-bp-1',
+        parentId: null,
+        kind: 'folder',
+        title: '教學材料與耗材',
+        amount: 0,
+        expenseDate: '',
+        memo: '可依實際分類再建子資料夾',
+        order: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'led-e1',
+        budgetPlanId: 'sandbox-bp-1',
+        parentId: 'led-f1',
+        kind: 'expense',
+        title: '本土語教材印製',
+        amount: 4500,
+        expenseDate: '2025-10-20',
+        memo: '廠商：範例印刷、發票已收',
+        order: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'led-e2',
+        budgetPlanId: 'sandbox-bp-1',
+        parentId: 'led-f1',
+        kind: 'expense',
+        title: '文具補充',
+        amount: 320,
+        expenseDate: '2025-11-05',
+        memo: '',
+        order: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+  } as Record<string, BudgetPlanLedgerEntry[]>,
 };
 
 // --- Courses & Students ---
@@ -295,6 +339,11 @@ export function sandboxGetBudgetPlans(): Promise<BudgetPlan[]> {
   return Promise.resolve([...store.budgetPlans].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')));
 }
 
+export function sandboxGetBudgetPlan(id: string): Promise<BudgetPlan | null> {
+  const p = store.budgetPlans.find((x) => x.id === id);
+  return Promise.resolve(p ? { ...p } : null);
+}
+
 export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: string }) {
   const id = payload.id ?? uid();
   const now = new Date().toISOString();
@@ -324,7 +373,84 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
 export function sandboxDeleteBudgetPlan(payload: { id: string }) {
   store.budgetPlans = store.budgetPlans.filter((p) => p.id !== payload.id);
   store.budgetPlanAdvances = store.budgetPlanAdvances.filter((a) => a.budgetPlanId !== payload.id);
+  delete store.budgetPlanLedgerByPlanId[payload.id];
   return Promise.resolve({ success: true });
+}
+
+export function sandboxUpdateBudgetPlanSpentTotal(planId: string, spentTotal: number) {
+  const p = store.budgetPlans.find((x) => x.id === planId);
+  if (!p) return Promise.resolve({ success: false as const });
+  const n = Number(spentTotal);
+  p.spentTotal = Number.isFinite(n) && n >= 0 ? n : 0;
+  p.updatedAt = new Date().toISOString();
+  return Promise.resolve({ success: true as const });
+}
+
+function sandboxLedgerList(planId: string): BudgetPlanLedgerEntry[] {
+  return store.budgetPlanLedgerByPlanId[planId] ?? [];
+}
+
+function sandboxCollectLedgerSubtreeIds(entries: BudgetPlanLedgerEntry[], rootId: string): string[] {
+  const byParent = new Map<string | null, BudgetPlanLedgerEntry[]>();
+  for (const e of entries) {
+    const p = e.parentId ?? null;
+    if (!byParent.has(p)) byParent.set(p, []);
+    byParent.get(p)!.push(e);
+  }
+  const out: string[] = [];
+  const walk = (id: string) => {
+    out.push(id);
+    for (const c of byParent.get(id) ?? []) walk(c.id);
+  };
+  walk(rootId);
+  return out;
+}
+
+export function sandboxGetBudgetPlanLedgerEntries(planId: string): Promise<BudgetPlanLedgerEntry[]> {
+  const list = sandboxLedgerList(planId);
+  return Promise.resolve([...list].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-TW')));
+}
+
+export function sandboxSaveBudgetPlanLedgerEntry(
+  planId: string,
+  payload: Partial<BudgetPlanLedgerEntry> & { title: string; kind: BudgetPlanLedgerKind }
+) {
+  const id = payload.id ?? uid();
+  const now = new Date().toISOString();
+  let list = sandboxLedgerList(planId);
+  const idx = list.findIndex((e) => e.id === id);
+  const parentId = payload.parentId === undefined ? (idx >= 0 ? list[idx].parentId : null) : payload.parentId;
+  const normalizedParent = parentId === '' || parentId === undefined ? null : parentId;
+  const siblings = list.filter((e) => (e.parentId ?? null) === normalizedParent && e.id !== id);
+  let order = payload.order;
+  if (order === undefined || order === null) {
+    order = siblings.length === 0 ? 0 : Math.max(...siblings.map((s) => s.order), -1) + 1;
+  }
+  const kind = payload.kind === 'expense' ? 'expense' : 'folder';
+  const row: BudgetPlanLedgerEntry = {
+    id,
+    budgetPlanId: planId,
+    parentId: normalizedParent,
+    kind,
+    title: String(payload.title).trim(),
+    amount: kind === 'expense' ? Math.max(0, Number(payload.amount) || 0) : 0,
+    expenseDate: kind === 'expense' ? String(payload.expenseDate ?? '').trim() : '',
+    memo: payload.memo != null ? String(payload.memo) : '',
+    order: Math.max(0, Number(order) || 0),
+    createdAt: idx >= 0 ? list[idx].createdAt ?? now : now,
+    updatedAt: now,
+  };
+  if (idx >= 0) list = list.map((e) => (e.id === id ? row : e));
+  else list = [...list, row];
+  store.budgetPlanLedgerByPlanId[planId] = list;
+  return Promise.resolve({ success: true as const, id });
+}
+
+export function sandboxDeleteBudgetPlanLedgerEntry(planId: string, entryId: string) {
+  const list = sandboxLedgerList(planId);
+  const ids = new Set(sandboxCollectLedgerSubtreeIds(list, entryId));
+  store.budgetPlanLedgerByPlanId[planId] = list.filter((e) => !ids.has(e.id));
+  return Promise.resolve({ success: true as const });
 }
 
 // --- Budget plan advances (代墊紀錄) ---
