@@ -119,6 +119,7 @@ const store = {
       accountingCode: '5010-01',
       budgetTotal: 50000,
       spentTotal: 12000,
+      plannedCommitTotal: 0,
       closeByDate: '2026-06-30',
       closureRequirements: '完成核銷並繳交成果報告',
       status: 'active',
@@ -362,6 +363,12 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
       (idx >= 0 ? store.budgetPlans[idx].accountingCode : ''),
     budgetTotal: Number(payload.budgetTotal) >= 0 ? Number(payload.budgetTotal) : 0,
     spentTotal: Number(payload.spentTotal) >= 0 ? Number(payload.spentTotal) : 0,
+    plannedCommitTotal:
+      payload.plannedCommitTotal !== undefined
+        ? Math.max(0, Number(payload.plannedCommitTotal) || 0)
+        : idx >= 0
+          ? (store.budgetPlans[idx].plannedCommitTotal ?? 0)
+          : 0,
     closeByDate: String(payload.closeByDate ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].closeByDate : ''),
     closureRequirements:
       String(payload.closureRequirements ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].closureRequirements : ''),
@@ -382,11 +389,17 @@ export function sandboxDeleteBudgetPlan(payload: { id: string }) {
   return Promise.resolve({ success: true });
 }
 
-export function sandboxUpdateBudgetPlanSpentTotal(planId: string, spentTotal: number) {
+export function sandboxUpdateBudgetPlanFinancialRollups(
+  planId: string,
+  spentTotal: number,
+  plannedCommitTotal: number
+) {
   const p = store.budgetPlans.find((x) => x.id === planId);
   if (!p) return Promise.resolve({ success: false as const });
-  const n = Number(spentTotal);
-  p.spentTotal = Number.isFinite(n) && n >= 0 ? n : 0;
+  const s = Number(spentTotal);
+  const pl = Number(plannedCommitTotal);
+  p.spentTotal = Number.isFinite(s) && s >= 0 ? s : 0;
+  p.plannedCommitTotal = Number.isFinite(pl) && pl >= 0 ? pl : 0;
   p.updatedAt = new Date().toISOString();
   return Promise.resolve({ success: true as const });
 }

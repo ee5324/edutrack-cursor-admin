@@ -40,7 +40,7 @@ import {
   sandboxGetBudgetPlan,
   sandboxSaveBudgetPlan,
   sandboxDeleteBudgetPlan,
-  sandboxUpdateBudgetPlanSpentTotal,
+  sandboxUpdateBudgetPlanFinancialRollups,
   sandboxGetBudgetPlanLedgerEntries,
   sandboxSaveBudgetPlanLedgerEntry,
   sandboxDeleteBudgetPlanLedgerEntry,
@@ -410,6 +410,7 @@ function budgetPlanFromDoc(id: string, data: DocumentData): BudgetPlan {
     accountingCode: data.accountingCode != null ? String(data.accountingCode) : '',
     budgetTotal: numFromFirestore(data.budgetTotal),
     spentTotal: numFromFirestore(data.spentTotal),
+    plannedCommitTotal: numFromFirestore(data.plannedCommitTotal),
     closeByDate: data.closeByDate != null ? String(data.closeByDate) : '',
     closureRequirements: data.closureRequirements != null ? String(data.closureRequirements) : '',
     status: statusParsed,
@@ -452,12 +453,14 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
   const id = payload.id ?? (crypto.randomUUID?.() ?? `bp-${Date.now()}`);
   const budgetTotal = Math.max(0, numFromFirestore(payload.budgetTotal));
   const spentTotal = Math.max(0, numFromFirestore(payload.spentTotal));
+  const plannedCommitTotal = Math.max(0, numFromFirestore(payload.plannedCommitTotal));
   const data: DocumentData = {
     academicYear: String(payload.academicYear ?? '').trim(),
     name: payload.name ?? '',
     accountingCode: String(payload.accountingCode ?? '').trim(),
     budgetTotal,
     spentTotal,
+    plannedCommitTotal,
     closeByDate: String(payload.closeByDate ?? '').trim(),
     closureRequirements: String(payload.closureRequirements ?? '').trim(),
     status: payload.status === 'closed' ? 'closed' : 'active',
@@ -678,14 +681,33 @@ export function sumBudgetPlanLedgerEstimated(entries: BudgetPlanLedgerEntry[]): 
   return entries.filter((e) => e.kind === 'expense').reduce((s, e) => s + (e.estimatedAmount || 0), 0);
 }
 
-/** 僅更新計畫的已支出欄位（供支用明細加總同步） */
-export async function updateBudgetPlanSpentTotal(planId: string, spentTotal: number) {
-  if (isSandbox()) return sandboxUpdateBudgetPlanSpentTotal(planId, spentTotal);
+/** 「預定」狀態單筆佔用額度：取預估與實支較大者（皆為 0 則 0） */
+export function ledgerPlannedCommitAmount(e: BudgetPlanLedgerEntry): number {
+  if (e.kind !== 'expense') return 0;
+  const st = e.paymentStatus ?? 'settled';
+  if (st !== 'planned') return 0;
+  return Math.max(0, Math.max(e.estimatedAmount || 0, e.amount || 0));
+}
+
+/** 所有「預定」支用列佔用加總（用於剩餘額度＝核配－已支出－預定佔用） */
+export function sumBudgetPlanLedgerPlannedCommit(entries: BudgetPlanLedgerEntry[]): number {
+  return entries.reduce((s, e) => s + ledgerPlannedCommitAmount(e), 0);
+}
+
+/** 同步支用明細加總：已支出（實支）＋預定佔用 */
+export async function updateBudgetPlanFinancialRollups(
+  planId: string,
+  spentTotal: number,
+  plannedCommitTotal: number
+) {
+  if (isSandbox()) return sandboxUpdateBudgetPlanFinancialRollups(planId, spentTotal, plannedCommitTotal);
   const db = getDb();
   if (!db) return { success: false as const };
-  const n = Math.max(0, numFromFirestore(spentTotal));
+  const spent = Math.max(0, numFromFirestore(spentTotal));
+  const planned = Math.max(0, numFromFirestore(plannedCommitTotal));
   await updateDoc(doc(db, COLLECTIONS.BUDGET_PLANS, planId), {
-    spentTotal: n,
+    spentTotal: spent,
+    plannedCommitTotal: planned,
     updatedAt: serverTimestamp(),
   });
   return { success: true as const };

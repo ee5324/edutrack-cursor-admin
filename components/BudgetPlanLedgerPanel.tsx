@@ -19,9 +19,10 @@ import {
   getBudgetPlanLedgerEntries,
   saveBudgetPlanLedgerEntry,
   deleteBudgetPlanLedgerEntry,
-  updateBudgetPlanSpentTotal,
+  updateBudgetPlanFinancialRollups,
   sumBudgetPlanLedgerExpenses,
   sumBudgetPlanLedgerEstimated,
+  sumBudgetPlanLedgerPlannedCommit,
 } from '../services/api';
 
 const PAYMENT_STATUS_LABEL: Record<BudgetPlanLedgerPaymentStatus, string> = {
@@ -248,9 +249,10 @@ const BudgetPlanLedgerPanel: React.FC<{
         const list = await getBudgetPlanLedgerEntries(planId);
         setEntries(list);
         setExpanded(new Set(list.filter((e) => e.kind === 'folder').map((e) => e.id)));
-        const sum = sumBudgetPlanLedgerExpenses(list);
+        const sumSpent = sumBudgetPlanLedgerExpenses(list);
+        const sumPlanned = sumBudgetPlanLedgerPlannedCommit(list);
         if (alwaysSyncSpent || list.length > 0) {
-          await updateBudgetPlanSpentTotal(planId, sum);
+          await updateBudgetPlanFinancialRollups(planId, sumSpent, sumPlanned);
           onSpentSyncedRef.current?.();
         }
       } catch (e: any) {
@@ -269,6 +271,7 @@ const BudgetPlanLedgerPanel: React.FC<{
   const childrenMap = useMemo(() => groupChildrenByParent(entries), [entries]);
   const expenseTotal = useMemo(() => sumBudgetPlanLedgerExpenses(entries), [entries]);
   const estimatedTotal = useMemo(() => sumBudgetPlanLedgerEstimated(entries), [entries]);
+  const plannedCommitTotal = useMemo(() => sumBudgetPlanLedgerPlannedCommit(entries), [entries]);
 
   const openCreate = (parentId: string | null, kind: BudgetPlanLedgerKind) => {
     setDialog({ mode: 'create', parentId });
@@ -373,12 +376,15 @@ const BudgetPlanLedgerPanel: React.FC<{
         <div>
           <h2 className="text-sm font-semibold text-slate-800">支用明細與分類（巢狀資料夾）</h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            每筆可填<strong>預估金額</strong>、<strong>實支金額</strong>與<strong>支付狀態</strong>。計畫「已支出」僅加總狀態為「已執行待核銷」或「核銷完畢」的實支；「預定」僅列入預估合計。資料夾僅供分類。
+            「已執行待核銷／核銷完畢」的<strong>實支</strong>計入計畫<strong>已支出</strong>；「預定」以 max(預估, 實支) 計入<strong>預定佔用</strong>，兩者都會從核配扣<strong>剩餘額度</strong>。
           </p>
         </div>
         <div className="text-right text-xs text-slate-600 space-y-0.5">
           <div>
             預估合計：<span className="font-semibold text-slate-800 tabular-nums">${fmtMoney(estimatedTotal)}</span>
+          </div>
+          <div>
+            預定佔用：<span className="font-semibold text-sky-800 tabular-nums">${fmtMoney(plannedCommitTotal)}</span>
           </div>
           <div>
             實支計入已支出：<span className="font-bold text-emerald-800 tabular-nums">${fmtMoney(expenseTotal)}</span>

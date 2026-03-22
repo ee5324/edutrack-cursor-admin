@@ -109,6 +109,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         accountingCode: newRow.accountingCode.trim(),
         budgetTotal: Number(newRow.budgetTotal) || 0,
         spentTotal: 0,
+        plannedCommitTotal: 0,
         closeByDate: newRow.closeByDate.trim(),
         closureRequirements: newRow.closureRequirements.trim(),
         status: 'active',
@@ -341,7 +342,8 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         ) : (
           <ul className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
             {plans.map((p) => {
-              const remaining = (p.budgetTotal ?? 0) - (p.spentTotal ?? 0);
+              const planned = p.plannedCommitTotal ?? 0;
+              const remaining = (p.budgetTotal ?? 0) - (p.spentTotal ?? 0) - planned;
               const alertText = closeDateAlertLabel(p);
               const closed = p.status === 'closed';
               return (
@@ -389,6 +391,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 pt-1 tabular-nums">
                       <span>核配 ${fmtMoney(p.budgetTotal ?? 0)}</span>
                       <span>已支出 ${fmtMoney(p.spentTotal ?? 0)}</span>
+                      {planned > 0 ? <span className="text-sky-800">預定佔用 ${fmtMoney(planned)}</span> : null}
                       <span className={remaining < 0 ? 'text-red-600 font-semibold' : 'font-semibold text-slate-800'}>
                         剩餘 ${fmtMoney(remaining)}
                       </span>
@@ -441,6 +444,7 @@ const BudgetPlanDetailView: React.FC<{
   const [accountingCode, setAccountingCode] = useState('');
   const [budgetTotal, setBudgetTotal] = useState('0');
   const [spentTotal, setSpentTotal] = useState('0');
+  const [plannedCommitTotal, setPlannedCommitTotal] = useState('0');
   const [closeByDate, setCloseByDate] = useState('');
   const [closureRequirements, setClosureRequirements] = useState('');
   const [note, setNote] = useState('');
@@ -467,6 +471,7 @@ const BudgetPlanDetailView: React.FC<{
         setAccountingCode(p.accountingCode || '');
         setBudgetTotal(String(p.budgetTotal));
         setSpentTotal(String(p.spentTotal));
+        setPlannedCommitTotal(String(p.plannedCommitTotal ?? 0));
         setCloseByDate(p.closeByDate || '');
         setClosureRequirements(p.closureRequirements || '');
         setNote(p.note ?? '');
@@ -495,7 +500,8 @@ const BudgetPlanDetailView: React.FC<{
     return closeDateAlertLabel({ ...plan, status, closeByDate } as BudgetPlan);
   }, [plan, status, closeByDate]);
 
-  const remaining = (Number(budgetTotal) || 0) - (Number(spentTotal) || 0);
+  const remaining =
+    (Number(budgetTotal) || 0) - (Number(spentTotal) || 0) - (Number(plannedCommitTotal) || 0);
 
   const rowValid =
     name.trim() &&
@@ -528,6 +534,7 @@ const BudgetPlanDetailView: React.FC<{
         accountingCode,
         budgetTotal: Number(budgetTotal) || 0,
         spentTotal: Number(spentTotal) || 0,
+        plannedCommitTotal: Number(plannedCommitTotal) || 0,
         closeByDate,
         closureRequirements,
         note,
@@ -704,11 +711,20 @@ const BudgetPlanDetailView: React.FC<{
               ${fmtMoney(Number(spentTotal) || 0)}
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
-              由支用明細<strong>實支金額</strong>加總（僅「已執行待核銷」「核銷完畢」計入）；「預定」不計入。請在下方登錄。
+              由支用明細<strong>實支</strong>加總（僅「已執行待核銷」「核銷完畢」）；「預定」不計入本欄，但會列入下方「預定佔用」。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">預定佔用（元）</label>
+            <div className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right tabular-nums bg-sky-50/80 text-sky-950 font-medium">
+              ${fmtMoney(Number(plannedCommitTotal) || 0)}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              「預定」支用列以 max(預估, 實支) 加總，與已支出一併從核配扣減剩餘。
             </p>
           </div>
           <div className="sm:col-span-2 rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
-            <span className="text-xs text-slate-500">剩餘額度（自動計算）</span>
+            <span className="text-xs text-slate-500">剩餘額度（核配 − 已支出 − 預定佔用）</span>
             <div
               className={`text-xl font-bold tabular-nums ${remaining < 0 ? 'text-red-600' : 'text-slate-900'}`}
             >

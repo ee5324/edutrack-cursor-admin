@@ -309,7 +309,7 @@ export interface Vendor {
 /** 專案狀態：已結案者不再列入側邊「結案將屆」警示 */
 export type BudgetPlanStatus = 'active' | 'closed';
 
-/** 計畫專案／預算：核配額度與已支出隨進程更新，剩餘由前端計算 */
+/** 計畫專案／預算：核配、已支出、預定佔用由支用明細同步；剩餘＝核配−已支出−預定佔用 */
 export interface BudgetPlan {
   id: string;
   /** 學年度（例：114，與校務慣用民國年學年一致） */
@@ -320,8 +320,14 @@ export interface BudgetPlan {
   accountingCode: string;
   /** 核配／計畫總額（元） */
   budgetTotal: number;
-  /** 已支出／已動用（元），執行中隨進度更新 */
+  /**
+   * 已支出（元）：支用明細中狀態為「已執行待核銷」「核銷完畢」之實支加總（由明細同步）
+   */
   spentTotal: number;
+  /**
+   * 預定佔用（元）：狀態為「預定」之支用列，以 max(預估, 實支) 加總（由明細同步；用於剩餘額度）
+   */
+  plannedCommitTotal?: number;
   /** 計畫結案日期 YYYY-MM-DD */
   closeByDate: string;
   /** 結案要求（應達成項目、文件、核銷等說明） */
