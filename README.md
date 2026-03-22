@@ -23,6 +23,7 @@
 | 行政行事曆、待辦 | `components/TodoCalendar.tsx` | `services/api.ts`：getTodos, saveTodo, deleteTodo, uploadAttachment… |
 | 本土語點名單 · 點名單製作 | `AttendanceGenerator.tsx` | api：getHistory, getCourseStudents, saveCourseConfig, importFromSpreadsheet |
 | 本土語點名單 · 學生語言選修登錄 | `components/LanguageElectiveRoster.tsx` | api：getLanguageElectiveRoster, getAllLanguageElectiveRosters, saveLanguageElectiveRoster（Firestore `edutrack_language_elective`） |
+| 語言選修儀表板 | `components/LanguageElectiveDashboard.tsx` | 各語言年級人數、開班班別、**週課表**（由班別「上課時間」解析週一至週五） |
 | 頒獎通知 | `AwardGenerator.tsx` | api：getAwardHistory, saveAwardRecord, getAllKnownStudents, createAwardDocs… |
 | 廠商管理 | `VendorManager.tsx` | api：getVendors, saveVendor, deleteVendor |
 | 考卷存檔 | `components/ExamPapersTab.tsx` | api：getExamPaperFolders, getExamPapers… |

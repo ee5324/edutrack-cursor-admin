@@ -2,9 +2,17 @@
  * 語言選修儀表板：依學年顯示各語言、各年級選修人數與開班班別。
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { BarChart3, Loader2 } from 'lucide-react';
+import { BarChart3, Loader2, CalendarDays } from 'lucide-react';
 import { getLanguageElectiveRoster, getLanguageOptions } from '../services/api';
 import { loadLanguageOptions } from '../utils/languageOptions';
+import {
+  groupLanguageSettingsByWeekday,
+  weekdayColumnsForSchedule,
+  weekendSettings,
+  weekdayLabel,
+  weekdayFromLanguageClassTime,
+  type WeekdayKey,
+} from '../utils/languageElectiveWeeklySchedule';
 import type { LanguageElectiveStudent, LanguageClassSetting } from '../types';
 
 const GRADES = [1, 2, 3, 4, 5, 6] as const;
@@ -76,6 +84,13 @@ const LanguageElectiveDashboard: React.FC = () => {
     });
     return map;
   }, [languageList, languageClassSettings]);
+
+  const weekdayCols = useMemo(() => weekdayColumnsForSchedule(), []);
+  const { byDay, unmatched } = useMemo(
+    () => groupLanguageSettingsByWeekday(languageClassSettings),
+    [languageClassSettings]
+  );
+  const weekendList = useMemo(() => weekendSettings(byDay), [byDay]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -159,6 +174,121 @@ const LanguageElectiveDashboard: React.FC = () => {
 
         {!loading && students.length === 0 && (
           <p className="mt-4 text-slate-500 text-sm">尚無名單資料，請先於「學生名單」建置並儲存該學年名單。</p>
+        )}
+      </section>
+
+      {/* 週課表：語言班別設定之上課時間（由「學生名單」內語言班別的時間欄解析星期） */}
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-sm font-medium mb-3">
+          <CalendarDays size={16} />
+          週課表（語言班別）
+        </div>
+        <h3 className="text-lg font-bold text-slate-900">各語言班別上課時間一覽</h3>
+        <p className="mt-1 text-slate-600 text-sm mb-4">
+          班別編號／名稱置於每格上方；時間欄請含<strong>星期</strong>（如：週一 08:00、W3-早）以便自動對應欄位。資料來自該學年之
+          <strong>語言班別設定</strong>（與「學生名單」相同來源）。
+        </p>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 size={28} className="animate-spin text-slate-400" />
+          </div>
+        ) : languageClassSettings.length === 0 ? (
+          <p className="text-slate-500 text-sm">
+            尚無語言班別設定。請至「學生名單」新增班別並填寫<strong>上課時間</strong>與教室、教師。
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm min-w-[640px] border-collapse">
+                <thead>
+                  <tr className="bg-slate-800 text-white">
+                    {weekdayCols.map((col) => (
+                      <th key={col.key} className="px-3 py-3 text-center font-semibold border-b border-slate-700">
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="align-top bg-slate-50/80">
+                    {weekdayCols.map((col) => {
+                      const list = byDay[col.key as WeekdayKey] ?? [];
+                      return (
+                        <td
+                          key={col.key}
+                          className="border border-slate-200 px-2 py-3 align-top min-w-[8.5rem] max-w-[14rem]"
+                        >
+                          {list.length === 0 ? (
+                            <span className="text-slate-400 text-xs block text-center py-2">—</span>
+                          ) : (
+                            <ul className="space-y-2">
+                              {list.map((s) => (
+                                <li
+                                  key={s.id}
+                                  className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
+                                >
+                                  <div className="font-semibold text-slate-900 text-xs leading-tight border-b border-slate-100 pb-1 mb-1">
+                                    {s.name || '（未命名班別）'}
+                                  </div>
+                                  <div className="text-xs text-slate-700 font-mono whitespace-pre-wrap break-words">
+                                    {s.time?.trim() || '—'}
+                                  </div>
+                                  {s.classroom?.trim() && (
+                                    <div className="text-xs text-slate-500 mt-1">教室 {s.classroom}</div>
+                                  )}
+                                  {s.teacher?.trim() && (
+                                    <div className="text-xs text-slate-500">教師 {s.teacher}</div>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {weekendList.length > 0 && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm">
+                <span className="font-semibold text-amber-900">週末時段：</span>
+                <ul className="mt-2 space-y-1 text-amber-950">
+                  {weekendList.map((s) => {
+                    const wk = weekdayFromLanguageClassTime(s.time);
+                    return (
+                      <li key={s.id}>
+                        <span className="font-medium">{s.name}</span>
+                        <span className="text-amber-800 mx-1">·</span>
+                        {wk ? weekdayLabel(wk) : ''}
+                        {s.time?.trim() ? ` ${s.time.trim()}` : ''}
+                        {s.classroom?.trim() ? ` · 教室 ${s.classroom}` : ''}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {unmatched.length > 0 && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-medium text-slate-800 mb-2">
+                  無法從時間欄辨識星期之班別（仍會列出上課時間全文）
+                </p>
+                <ul className="text-sm text-slate-700 space-y-1">
+                  {unmatched.map((s) => (
+                    <li key={s.id}>
+                      <span className="font-semibold">{s.name}</span>：{s.time?.trim() || '（未填時間）'}
+                      {s.classroom?.trim() ? ` · ${s.classroom}` : ''}
+                      {s.teacher?.trim() ? ` · ${s.teacher}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>
