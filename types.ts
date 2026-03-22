@@ -259,6 +259,14 @@ export interface BudgetPlanAdvance {
 /** 計畫底下支用明細樹狀節點：資料夾（分類）或實際支用紀錄 */
 export type BudgetPlanLedgerKind = 'folder' | 'expense';
 
+/**
+ * 支用支付／核銷進度
+ * - 預定：僅預估，實支不計入計畫「已支出」
+ * - 已執行待核銷：實支已發生，計入已支出，尚未完成核銷
+ * - 核銷完畢：已完成核銷（實支仍計入已支出）
+ */
+export type BudgetPlanLedgerPaymentStatus = 'planned' | 'executed_pending' | 'settled';
+
 /** 存在 Firestore：`edutrack_budget_plans/{planId}/ledger_entries/{entryId}` */
 export interface BudgetPlanLedgerEntry {
   id: string;
@@ -268,8 +276,12 @@ export interface BudgetPlanLedgerEntry {
   kind: BudgetPlanLedgerKind;
   /** 資料夾名稱或支用摘要 */
   title: string;
-  /** 支用金額（元）；資料夾為 0 */
+  /** 預估金額（元）；支用列用於規劃，資料夾為 0 */
+  estimatedAmount: number;
+  /** 實支金額（元）；依支付狀態決定是否計入計畫「已支出」，資料夾為 0 */
   amount: number;
+  /** 支付／核銷狀態（僅支用列） */
+  paymentStatus?: BudgetPlanLedgerPaymentStatus;
   /** 支用／入帳日期 YYYY-MM-DD（支用建議填寫） */
   expenseDate?: string;
   memo?: string;

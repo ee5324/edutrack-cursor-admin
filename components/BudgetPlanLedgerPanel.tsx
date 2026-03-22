@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Folder,
   FolderOpen,
@@ -10,14 +10,38 @@ import {
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
-import type { BudgetPlanLedgerEntry, BudgetPlanLedgerKind } from '../types';
+import type {
+  BudgetPlanLedgerEntry,
+  BudgetPlanLedgerKind,
+  BudgetPlanLedgerPaymentStatus,
+} from '../types';
 import {
   getBudgetPlanLedgerEntries,
   saveBudgetPlanLedgerEntry,
   deleteBudgetPlanLedgerEntry,
   updateBudgetPlanSpentTotal,
   sumBudgetPlanLedgerExpenses,
+  sumBudgetPlanLedgerEstimated,
 } from '../services/api';
+
+const PAYMENT_STATUS_LABEL: Record<BudgetPlanLedgerPaymentStatus, string> = {
+  planned: '預定',
+  executed_pending: '已執行待核銷',
+  settled: '核銷完畢',
+};
+
+function paymentStatusBadgeClass(st: BudgetPlanLedgerPaymentStatus | undefined): string {
+  switch (st ?? 'settled') {
+    case 'planned':
+      return 'bg-sky-100 text-sky-900 border-sky-200';
+    case 'executed_pending':
+      return 'bg-amber-100 text-amber-900 border-amber-200';
+    case 'settled':
+      return 'bg-emerald-100 text-emerald-900 border-emerald-200';
+    default:
+      return 'bg-slate-100 text-slate-700 border-slate-200';
+  }
+}
 
 const fmtMoney = (n: number) =>
   n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -97,9 +121,22 @@ const LedgerTreeBranch: React.FC<TreeProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-slate-800">{e.title}</div>
                 {e.kind === 'expense' && (
-                  <div className="text-xs text-slate-600 mt-0.5 tabular-nums">
-                    {e.expenseDate ? <span>{e.expenseDate} · </span> : null}
-                    <span className="font-semibold text-emerald-800">${fmtMoney(e.amount)}</span>
+                  <div className="text-xs text-slate-600 mt-0.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium ${paymentStatusBadgeClass(e.paymentStatus)}`}
+                      >
+                        {PAYMENT_STATUS_LABEL[e.paymentStatus ?? 'settled']}
+                      </span>
+                      {e.expenseDate ? <span className="text-slate-500">{e.expenseDate}</span> : null}
+                    </div>
+                    <div className="tabular-nums">
+                      <span className="text-slate-500">預估</span>{' '}
+                      <span className="font-medium text-slate-800">${fmtMoney(e.estimatedAmount ?? 0)}</span>
+                      <span className="text-slate-400 mx-1">·</span>
+                      <span className="text-slate-500">實支</span>{' '}
+                      <span className="font-semibold text-emerald-800">${fmtMoney(e.amount)}</span>
+                    </div>
                   </div>
                 )}
                 {e.memo ? <p className="text-xs text-slate-500 mt-0.5 whitespace-pre-wrap">{e.memo}</p> : null}
@@ -189,9 +226,15 @@ const BudgetPlanLedgerPanel: React.FC<{
 
   const [formKind, setFormKind] = useState<BudgetPlanLedgerKind>('expense');
   const [formTitle, setFormTitle] = useState('');
+  const [formEstimated, setFormEstimated] = useState('');
   const [formAmount, setFormAmount] = useState('');
+  const [formPaymentStatus, setFormPaymentStatus] = useState<BudgetPlanLedgerPaymentStatus>('planned');
   const [formDate, setFormDate] = useState('');
   const [formMemo, setFormMemo] = useState('');
+
+  /** 避免父層每次 render 傳新函式時，pullLedger 依賴變動 → useEffect 無限重跑、loading 閃爍 */
+  const onSpentSyncedRef = useRef(onSpentSynced);
+  onSpentSyncedRef.current = onSpentSynced;
 
   /**
    * @param alwaysSyncSpent true：一定把「已支出」寫成明細加總（新增／刪除／重整）
@@ -208,7 +251,7 @@ const BudgetPlanLedgerPanel: React.FC<{
         const sum = sumBudgetPlanLedgerExpenses(list);
         if (alwaysSyncSpent || list.length > 0) {
           await updateBudgetPlanSpentTotal(planId, sum);
-          onSpentSynced?.();
+          onSpentSyncedRef.current?.();
         }
       } catch (e: any) {
         setError(e?.message || '載入支用明細失敗');
@@ -216,21 +259,24 @@ const BudgetPlanLedgerPanel: React.FC<{
         setLoading(false);
       }
     },
-    [planId, onSpentSynced]
+    [planId]
   );
 
   useEffect(() => {
     void pullLedger(false);
-  }, [pullLedger]);
+  }, [planId, pullLedger]);
 
   const childrenMap = useMemo(() => groupChildrenByParent(entries), [entries]);
   const expenseTotal = useMemo(() => sumBudgetPlanLedgerExpenses(entries), [entries]);
+  const estimatedTotal = useMemo(() => sumBudgetPlanLedgerEstimated(entries), [entries]);
 
   const openCreate = (parentId: string | null, kind: BudgetPlanLedgerKind) => {
     setDialog({ mode: 'create', parentId });
     setFormKind(kind);
     setFormTitle('');
+    setFormEstimated('');
     setFormAmount('');
+    setFormPaymentStatus('planned');
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormMemo('');
   };
@@ -239,7 +285,9 @@ const BudgetPlanLedgerPanel: React.FC<{
     setDialog({ mode: 'edit', parentId: entry.parentId ?? null, entry });
     setFormKind(entry.kind);
     setFormTitle(entry.title);
+    setFormEstimated(String(entry.estimatedAmount ?? 0));
     setFormAmount(String(entry.amount ?? 0));
+    setFormPaymentStatus(entry.paymentStatus ?? 'settled');
     setFormDate(entry.expenseDate ?? '');
     setFormMemo(entry.memo ?? '');
   };
@@ -254,9 +302,14 @@ const BudgetPlanLedgerPanel: React.FC<{
       return;
     }
     if (formKind === 'expense') {
-      const n = Number(formAmount);
-      if (!Number.isFinite(n) || n < 0) {
-        setError('支用金額請填有效數字');
+      const est = Number(formEstimated);
+      const act = Number(formAmount);
+      if (!Number.isFinite(est) || est < 0) {
+        setError('預估金額請填有效數字');
+        return;
+      }
+      if (!Number.isFinite(act) || act < 0) {
+        setError('實支金額請填有效數字');
         return;
       }
     }
@@ -266,7 +319,9 @@ const BudgetPlanLedgerPanel: React.FC<{
       const base: Partial<BudgetPlanLedgerEntry> & { title: string; kind: BudgetPlanLedgerKind } = {
         kind: formKind,
         title: t,
+        estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
         amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
+        paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
         expenseDate: formKind === 'expense' ? formDate.trim() : '',
         memo: formMemo.trim(),
       };
@@ -318,12 +373,15 @@ const BudgetPlanLedgerPanel: React.FC<{
         <div>
           <h2 className="text-sm font-semibold text-slate-800">支用明細與分類（巢狀資料夾）</h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            <strong>每一筆花費請在此新增「支用紀錄」</strong>（日期、金額、備註）；計畫上的「已支出」會<strong>自動等於下方支用列加總</strong>，無需手填總額。資料夾僅供分類，可巢狀多層。
+            每筆可填<strong>預估金額</strong>、<strong>實支金額</strong>與<strong>支付狀態</strong>。計畫「已支出」僅加總狀態為「已執行待核銷」或「核銷完畢」的實支；「預定」僅列入預估合計。資料夾僅供分類。
           </p>
         </div>
-        <div className="text-right text-xs text-slate-600">
+        <div className="text-right text-xs text-slate-600 space-y-0.5">
           <div>
-            支用列加總（= 已支出）：<span className="font-bold text-emerald-800 tabular-nums">${fmtMoney(expenseTotal)}</span>
+            預估合計：<span className="font-semibold text-slate-800 tabular-nums">${fmtMoney(estimatedTotal)}</span>
+          </div>
+          <div>
+            實支計入已支出：<span className="font-bold text-emerald-800 tabular-nums">${fmtMoney(expenseTotal)}</span>
           </div>
         </div>
       </div>
@@ -424,9 +482,35 @@ const BudgetPlanLedgerPanel: React.FC<{
               </div>
               {formKind === 'expense' && (
                 <>
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">支付狀態</label>
+                    <select
+                      value={formPaymentStatus}
+                      onChange={(e) => setFormPaymentStatus(e.target.value as BudgetPlanLedgerPaymentStatus)}
+                      className="w-full border rounded-lg px-2 py-1.5"
+                    >
+                      <option value="planned">{PAYMENT_STATUS_LABEL.planned}</option>
+                      <option value="executed_pending">{PAYMENT_STATUS_LABEL.executed_pending}</option>
+                      <option value="settled">{PAYMENT_STATUS_LABEL.settled}</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      預定：實支不計入計畫已支出；已執行待核銷／核銷完畢：實支會計入。
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs text-slate-600 mb-1">金額（元）</label>
+                      <label className="block text-xs text-slate-600 mb-1">預估金額（元）</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={formEstimated}
+                        onChange={(e) => setFormEstimated(e.target.value)}
+                        className="w-full border rounded-lg px-2 py-1.5 text-right tabular-nums"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">實支金額（元）</label>
                       <input
                         type="number"
                         min={0}
@@ -436,15 +520,15 @@ const BudgetPlanLedgerPanel: React.FC<{
                         className="w-full border rounded-lg px-2 py-1.5 text-right tabular-nums"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">支用日期</label>
-                      <input
-                        type="date"
-                        value={formDate}
-                        onChange={(e) => setFormDate(e.target.value)}
-                        className="w-full border rounded-lg px-2 py-1.5"
-                      />
-                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">支用日期</label>
+                    <input
+                      type="date"
+                      value={formDate}
+                      onChange={(e) => setFormDate(e.target.value)}
+                      className="w-full border rounded-lg px-2 py-1.5"
+                    />
                   </div>
                 </>
               )}

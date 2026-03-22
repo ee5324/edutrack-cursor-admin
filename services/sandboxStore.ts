@@ -2,7 +2,7 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan, BudgetPlanAdvance, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, MonthlyRecurringTodoRule } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan, BudgetPlanAdvance, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, BudgetPlanLedgerPaymentStatus, MonthlyRecurringTodoRule } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -150,6 +150,7 @@ const store = {
         parentId: null,
         kind: 'folder',
         title: '教學材料與耗材',
+        estimatedAmount: 0,
         amount: 0,
         expenseDate: '',
         memo: '可依實際分類再建子資料夾',
@@ -163,7 +164,9 @@ const store = {
         parentId: 'led-f1',
         kind: 'expense',
         title: '本土語教材印製',
+        estimatedAmount: 5000,
         amount: 4500,
+        paymentStatus: 'settled',
         expenseDate: '2025-10-20',
         memo: '廠商：範例印刷、發票已收',
         order: 0,
@@ -176,7 +179,9 @@ const store = {
         parentId: 'led-f1',
         kind: 'expense',
         title: '文具補充',
+        estimatedAmount: 300,
         amount: 320,
+        paymentStatus: 'executed_pending',
         expenseDate: '2025-11-05',
         memo: '',
         order: 1,
@@ -406,6 +411,11 @@ function sandboxCollectLedgerSubtreeIds(entries: BudgetPlanLedgerEntry[], rootId
   return out;
 }
 
+function sandboxParseLedgerPaymentStatus(v: unknown): BudgetPlanLedgerPaymentStatus {
+  if (v === 'planned' || v === 'executed_pending' || v === 'settled') return v;
+  return 'settled';
+}
+
 export function sandboxGetBudgetPlanLedgerEntries(planId: string): Promise<BudgetPlanLedgerEntry[]> {
   const list = sandboxLedgerList(planId);
   return Promise.resolve([...list].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-TW')));
@@ -419,6 +429,7 @@ export function sandboxSaveBudgetPlanLedgerEntry(
   const now = new Date().toISOString();
   let list = sandboxLedgerList(planId);
   const idx = list.findIndex((e) => e.id === id);
+  const prev = idx >= 0 ? list[idx] : undefined;
   const parentId = payload.parentId === undefined ? (idx >= 0 ? list[idx].parentId : null) : payload.parentId;
   const normalizedParent = parentId === '' || parentId === undefined ? null : parentId;
   const siblings = list.filter((e) => (e.parentId ?? null) === normalizedParent && e.id !== id);
@@ -427,15 +438,41 @@ export function sandboxSaveBudgetPlanLedgerEntry(
     order = siblings.length === 0 ? 0 : Math.max(...siblings.map((s) => s.order), -1) + 1;
   }
   const kind = payload.kind === 'expense' ? 'expense' : 'folder';
+  const amount =
+    kind === 'expense'
+      ? Math.max(
+          0,
+          Number(payload.amount !== undefined ? payload.amount : (prev?.amount ?? 0)) || 0
+        )
+      : 0;
+  const estimatedAmount =
+    kind === 'expense'
+      ? Math.max(
+          0,
+          Number(
+            payload.estimatedAmount !== undefined ? payload.estimatedAmount : (prev?.estimatedAmount ?? 0)
+          ) || 0
+        )
+      : 0;
+  const paymentStatus: BudgetPlanLedgerPaymentStatus | undefined =
+    kind === 'expense'
+      ? payload.paymentStatus !== undefined
+        ? sandboxParseLedgerPaymentStatus(payload.paymentStatus)
+        : prev?.paymentStatus != null
+          ? prev.paymentStatus
+          : 'planned'
+      : undefined;
   const row: BudgetPlanLedgerEntry = {
     id,
     budgetPlanId: planId,
     parentId: normalizedParent,
     kind,
     title: String(payload.title).trim(),
-    amount: kind === 'expense' ? Math.max(0, Number(payload.amount) || 0) : 0,
-    expenseDate: kind === 'expense' ? String(payload.expenseDate ?? '').trim() : '',
-    memo: payload.memo != null ? String(payload.memo) : '',
+    estimatedAmount,
+    amount,
+    paymentStatus,
+    expenseDate: kind === 'expense' ? String(payload.expenseDate ?? prev?.expenseDate ?? '').trim() : '',
+    memo: payload.memo !== undefined ? String(payload.memo) : (prev?.memo ?? ''),
     order: Math.max(0, Number(order) || 0),
     createdAt: idx >= 0 ? list[idx].createdAt ?? now : now,
     updatedAt: now,

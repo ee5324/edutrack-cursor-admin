@@ -27,7 +27,7 @@
 | 頒獎通知 | `AwardGenerator.tsx` | api：getAwardHistory, saveAwardRecord, getAllKnownStudents, createAwardDocs… |
 | 廠商管理 | `VendorManager.tsx` | api：getVendors, saveVendor, deleteVendor |
 | 考卷存檔 | `components/ExamPapersTab.tsx` | api：getExamPaperFolders, getExamPapers… |
-| 計畫專案 | `components/BudgetPlansTab.tsx`、`components/BudgetPlanLedgerPanel.tsx` | 清單＋單筆專屬頁；**巢狀支用明細**存於 `edutrack_budget_plans/{planId}/ledger_entries`（資料夾／支用列，多層）；api 另含 `getBudgetPlanLedgerEntries`、`saveBudgetPlanLedgerEntry`、`deleteBudgetPlanLedgerEntry`；刪除計畫會清空子集合 |
+| 計畫專案 | `components/BudgetPlansTab.tsx`、`components/BudgetPlanLedgerPanel.tsx` | 清單＋單筆專屬頁；**巢狀支用明細**存於 `edutrack_budget_plans/{planId}/ledger_entries`（資料夾／支用列；支用列含**預估金額**、**實支金額**、**支付狀態**：預定／已執行待核銷／核銷完畢；計入「已支出」的實支依狀態篩選）；api 含 `getBudgetPlanLedgerEntries`、`saveBudgetPlanLedgerEntry`、`deleteBudgetPlanLedgerEntry` 等；刪除計畫會清空子集合 |
 | **計畫代墊** | `components/BudgetAdvancesTab.tsx` | api：getBudgetPlanAdvances, saveBudgetPlanAdvance, deleteBudgetPlanAdvance（Firestore `edutrack_budget_plan_advances`；**連結 budgetPlanId** 標明代墊所屬計畫；刪除計畫時一併刪除其代墊紀錄） |
 | 事項列檔 | `ArchiveManager.tsx` | api：getArchiveTasks, saveArchiveTask, deleteArchiveTask |
 | 系統設定 | `App.tsx`（SettingsTab） | api：setupSystem |

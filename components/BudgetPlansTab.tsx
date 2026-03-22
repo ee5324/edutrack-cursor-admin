@@ -485,6 +485,11 @@ const BudgetPlanDetailView: React.FC<{
     void loadOne();
   }, [loadOne]);
 
+  /** 須穩定參考，否則 BudgetPlanLedgerPanel 的 pullLedger 會隨父層重 render 而變動，觸發無限載入迴圈 */
+  const handleLedgerSpentSynced = useCallback(() => {
+    void loadOne({ silent: true });
+  }, [loadOne]);
+
   const alertText = useMemo(() => {
     if (!plan) return null;
     return closeDateAlertLabel({ ...plan, status, closeByDate } as BudgetPlan);
@@ -699,7 +704,7 @@ const BudgetPlanDetailView: React.FC<{
               ${fmtMoney(Number(spentTotal) || 0)}
             </div>
             <p className="text-[10px] text-slate-500 mt-1">
-              由支用明細自動加總，無法手改；請在下方新增「支用紀錄」。
+              由支用明細<strong>實支金額</strong>加總（僅「已執行待核銷」「核銷完畢」計入）；「預定」不計入。請在下方登錄。
             </p>
           </div>
           <div className="sm:col-span-2 rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
@@ -742,9 +747,7 @@ const BudgetPlanDetailView: React.FC<{
         </div>
       </div>
 
-      {plan && (
-        <BudgetPlanLedgerPanel planId={plan.id} onSpentSynced={() => void loadOne({ silent: true })} />
-      )}
+      {plan && <BudgetPlanLedgerPanel planId={plan.id} onSpentSynced={handleLedgerSpentSynced} />}
     </div>
   );
 };

@@ -22,7 +22,7 @@ import {
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS, BUDGET_PLAN_LEDGER_SUBCOLLECTION } from './firebase';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, MonthlyRecurringTodoRule } from '../types';
+import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, BudgetPlanLedgerPaymentStatus, MonthlyRecurringTodoRule } from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -513,15 +513,28 @@ function normalizeLedgerParentId(v: unknown): string | null {
   return String(v);
 }
 
+function parseLedgerPaymentStatus(v: unknown): BudgetPlanLedgerPaymentStatus {
+  if (v === 'planned' || v === 'executed_pending' || v === 'settled') return v;
+  return 'settled';
+}
+
 function ledgerEntryFromDoc(planId: string, id: string, data: DocumentData): BudgetPlanLedgerEntry {
   const kind: BudgetPlanLedgerKind = data.kind === 'expense' ? 'expense' : 'folder';
+  const hasPaymentField = data.paymentStatus != null || data.estimatedAmount != null;
   return {
     id,
     budgetPlanId: planId,
     parentId: normalizeLedgerParentId(data.parentId),
     kind,
     title: String(data.title ?? ''),
+    estimatedAmount: kind === 'expense' ? Math.max(0, numFromFirestore(data.estimatedAmount)) : 0,
     amount: numFromFirestore(data.amount),
+    paymentStatus:
+      kind === 'expense'
+        ? hasPaymentField
+          ? parseLedgerPaymentStatus(data.paymentStatus)
+          : 'settled'
+        : undefined,
     expenseDate: data.expenseDate != null ? String(data.expenseDate) : '',
     memo: data.memo != null ? String(data.memo) : '',
     order: Number(data.order) || 0,
@@ -587,7 +600,30 @@ export async function saveBudgetPlanLedgerEntry(
   const kind: BudgetPlanLedgerKind = payload.kind === 'expense' ? 'expense' : 'folder';
   const title = String(payload.title ?? '').trim();
   if (!title) throw new Error('請填寫標題');
-  const amount = kind === 'expense' ? Math.max(0, numFromFirestore(payload.amount)) : 0;
+  const amount =
+    kind === 'expense'
+      ? Math.max(
+          0,
+          numFromFirestore(payload.amount !== undefined ? payload.amount : (prev?.amount ?? 0))
+        )
+      : 0;
+  const estimatedAmount =
+    kind === 'expense'
+      ? Math.max(
+          0,
+          numFromFirestore(
+            payload.estimatedAmount !== undefined ? payload.estimatedAmount : (prev?.estimatedAmount ?? 0)
+          )
+        )
+      : 0;
+  const expensePaymentStatus: BudgetPlanLedgerPaymentStatus | undefined =
+    kind === 'expense'
+      ? payload.paymentStatus !== undefined
+        ? parseLedgerPaymentStatus(payload.paymentStatus)
+        : prev?.paymentStatus != null
+          ? prev.paymentStatus
+          : 'planned'
+      : undefined;
   const expenseDate =
     kind === 'expense' ? String(payload.expenseDate ?? prev?.expenseDate ?? '').trim() : '';
   const memo = payload.memo !== undefined ? String(payload.memo) : (prev?.memo ?? '');
@@ -597,11 +633,15 @@ export async function saveBudgetPlanLedgerEntry(
     kind,
     title,
     amount,
+    estimatedAmount,
     expenseDate,
     memo,
     order: Math.max(0, Number(orderNum) || 0),
     updatedAt: serverTimestamp(),
   };
+  if (kind === 'expense' && expensePaymentStatus) {
+    docBody.paymentStatus = expensePaymentStatus;
+  }
   if (!prev) docBody.createdAt = serverTimestamp();
   await setDoc(existingRef, docBody, { merge: true });
   return { success: true as const, id };
@@ -619,9 +659,23 @@ export async function deleteBudgetPlanLedgerEntry(planId: string, entryId: strin
   return { success: true as const };
 }
 
-/** 加總計畫底下所有「支用」節點金額（不含資料夾） */
+/** 實支是否計入計畫「已支出」（預定階段不計入） */
+export function ledgerActualCountsTowardSpent(e: BudgetPlanLedgerEntry): boolean {
+  if (e.kind !== 'expense') return false;
+  const st = e.paymentStatus ?? 'settled';
+  return st === 'executed_pending' || st === 'settled';
+}
+
+/** 加總計入「已支出」的實支金額（預定不計入；舊資料無 paymentStatus 視為已核銷完畢） */
 export function sumBudgetPlanLedgerExpenses(entries: BudgetPlanLedgerEntry[]): number {
-  return entries.filter((e) => e.kind === 'expense').reduce((s, e) => s + (e.amount || 0), 0);
+  return entries
+    .filter(ledgerActualCountsTowardSpent)
+    .reduce((s, e) => s + (e.amount || 0), 0);
+}
+
+/** 所有支用列「預估金額」加總（供對照） */
+export function sumBudgetPlanLedgerEstimated(entries: BudgetPlanLedgerEntry[]): number {
+  return entries.filter((e) => e.kind === 'expense').reduce((s, e) => s + (e.estimatedAmount || 0), 0);
 }
 
 /** 僅更新計畫的已支出欄位（供支用明細加總同步） */
