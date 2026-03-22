@@ -132,6 +132,9 @@ const MonthlyRecurringModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) =>
             設定後會依<strong>西曆月份</strong>自動出現在行事曆對應日期，無須每月重複新增。
             若未勾選任何月份，表示<strong>每月</strong>皆會出現。
           </p>
+          <p className="text-[11px] text-teal-800/90 bg-teal-50 border border-teal-100 rounded-lg px-2 py-1.5">
+            下方列表可隨時按<strong>編輯／刪除</strong>；若正填寫上方表單，點另一筆的「編輯」會改為編輯該筆（未儲存的新增內容將捨棄）。
+          </p>
 
           {!editing && (
             <button
@@ -310,7 +313,7 @@ const MonthlyRecurringModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) =>
                       <div className="flex gap-1 shrink-0">
                         <button
                           type="button"
-                          disabled={!!editing}
+                          disabled={saving}
                           onClick={() =>
                             setEditing({
                               id: r.id,
@@ -322,19 +325,19 @@ const MonthlyRecurringModal: React.FC<Props> = ({ isOpen, onClose, onSaved }) =>
                               memo: r.memo ?? '',
                             })
                           }
-                          className="p-1 text-slate-500 hover:text-teal-700 disabled:opacity-40"
-                          title="編輯"
+                          className="p-1.5 rounded-md text-teal-700 hover:bg-teal-100 disabled:opacity-40 disabled:pointer-events-none"
+                          title="編輯此筆"
                         >
-                          <Pencil size={16} />
+                          <Pencil size={18} />
                         </button>
                         <button
                           type="button"
-                          disabled={saving || !!editing}
+                          disabled={saving}
                           onClick={() => void handleDelete(r.id)}
-                          className="p-1 text-slate-500 hover:text-red-600 disabled:opacity-40"
-                          title="刪除"
+                          className="p-1.5 rounded-md text-slate-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:pointer-events-none"
+                          title="刪除此筆"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={18} />
                         </button>
                       </div>
                     </li>
