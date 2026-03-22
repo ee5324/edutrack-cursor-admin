@@ -61,6 +61,12 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/exam_submit_allowed_users/$(request.auth.token.email))
         && get(/databases/$(database)/documents/exam_submit_allowed_users/$(request.auth.token.email)).data.enabled == true;
     }
+
+    // 取得活動的預設鎖定設定（找不到活動時，預設鎖定=true）
+    function examCampaignLockedByDefault(campaignId) {
+      return !exists(/databases/$(database)/documents/edutrack_exam_campaigns/$(campaignId))
+        || get(/databases/$(database)/documents/edutrack_exam_campaigns/$(campaignId)).data.lockedByDefault == true;
+    }
     
     // =========================================================
     // 代課系統 (Subteach)：白名單制；首次登入者自動取得權限並寫入白名單
@@ -186,11 +192,13 @@ service cloud.firestore {
       // 導師送出：新建（預設鎖定）
       allow create: if isExamSubmitAllowedUser()
         && request.resource.data.submittedByEmail == request.auth.token.email
-        && request.resource.data.locked == true;
-      // 導師修改：僅在已解鎖狀態下，且修改後需重新鎖定
+        && request.resource.data.locked == examCampaignLockedByDefault(request.resource.data.campaignId);
+      // 導師修改：
+      // - 活動預設鎖定=true：僅在已解鎖狀態下，且修改後需重新鎖定
+      // - 活動預設鎖定=false：允許在未鎖定狀態下更新（仍需維持 locked=false）
       allow update: if isExamSubmitAllowedUser()
         && resource.data.locked == false
-        && request.resource.data.locked == true
+        && request.resource.data.locked == examCampaignLockedByDefault(resource.data.campaignId)
         && request.resource.data.submittedByEmail == request.auth.token.email
         && request.resource.data.campaignId == resource.data.campaignId
         && request.resource.data.className == resource.data.className;

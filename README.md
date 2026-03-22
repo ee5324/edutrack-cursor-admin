@@ -26,6 +26,7 @@
 | 頒獎通知 | `AwardGenerator.tsx` | api：getAwardHistory, saveAwardRecord, getAllKnownStudents, createAwardDocs… |
 | 廠商管理 | `VendorManager.tsx` | api：getVendors, saveVendor, deleteVendor |
 | 考卷存檔 | `components/ExamPapersTab.tsx` | api：getExamPaperFolders, getExamPapers… |
+| 計畫預算 | `components/BudgetPlansTab.tsx` | api：getBudgetPlans, saveBudgetPlan, deleteBudgetPlan（Firestore `edutrack_budget_plans`，含學年度／結案日／結案要求） |
 | 事項列檔 | `ArchiveManager.tsx` | api：getArchiveTasks, saveArchiveTask, deleteArchiveTask |
 | 系統設定 | `App.tsx`（SettingsTab） | api：setupSystem |
 

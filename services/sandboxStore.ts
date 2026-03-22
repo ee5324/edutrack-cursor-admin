@@ -113,9 +113,12 @@ const store = {
   budgetPlans: [
     {
       id: 'sandbox-bp-1',
+      academicYear: '114',
       name: '範例：本土語補助',
       budgetTotal: 50000,
       spentTotal: 12000,
+      closeByDate: '2026-06-30',
+      closureRequirements: '完成核銷並繳交成果報告',
       note: 'Sandbox 示範',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -281,9 +284,13 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
   const idx = store.budgetPlans.findIndex((p) => p.id === id);
   const row: BudgetPlan = {
     id,
+    academicYear: String(payload.academicYear ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].academicYear : ''),
     name: payload.name ?? '',
     budgetTotal: Number(payload.budgetTotal) >= 0 ? Number(payload.budgetTotal) : 0,
     spentTotal: Number(payload.spentTotal) >= 0 ? Number(payload.spentTotal) : 0,
+    closeByDate: String(payload.closeByDate ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].closeByDate : ''),
+    closureRequirements:
+      String(payload.closureRequirements ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].closureRequirements : ''),
     note: payload.note ?? '',
     createdAt: idx >= 0 ? store.budgetPlans[idx].createdAt ?? now : now,
     updatedAt: now,

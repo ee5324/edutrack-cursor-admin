@@ -230,12 +230,18 @@ export interface Vendor {
 /** 計畫／預算：核配額度與已支出，剩餘由前端計算 */
 export interface BudgetPlan {
   id: string;
+  /** 學年度（例：114，與校務慣用民國年學年一致） */
+  academicYear: string;
   /** 計畫名稱 */
   name: string;
   /** 核配／計畫總額（元） */
   budgetTotal: number;
   /** 已支出／已動用（元） */
   spentTotal: number;
+  /** 計畫結案日期 YYYY-MM-DD */
+  closeByDate: string;
+  /** 結案要求（應達成項目、文件、核銷等說明） */
+  closureRequirements: string;
   note?: string;
   createdAt?: string;
   updatedAt?: string;

@@ -141,6 +141,7 @@ const ExamSubmitPublicPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!userEmail || !campaignId || !className) return;
+    const locked = campaign?.lockedByDefault !== false;
     setSaving(true);
     setErr(null);
     setMsg(null);
@@ -149,11 +150,11 @@ const ExamSubmitPublicPage: React.FC = () => {
         campaignId,
         className,
         students: selectedList,
-        locked: true,
+        locked,
         submittedByEmail: userEmail,
         submittedAt: new Date().toISOString(),
       } as any);
-      setMsg('已送出（已鎖定）。如需修改請聯絡管理者解鎖。');
+      setMsg(locked ? '已送出（已鎖定）。如需修改請聯絡管理者解鎖。' : '已送出（未鎖定，可再次送出更新）。');
     } catch (e: any) {
       setErr(e?.message || '送出失敗');
     } finally {
@@ -312,7 +313,7 @@ const ExamSubmitPublicPage: React.FC = () => {
               className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-2"
             >
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              送出並鎖定
+              {campaign?.lockedByDefault === false ? '送出（不鎖定）' : '送出並鎖定'}
             </button>
           </div>
 

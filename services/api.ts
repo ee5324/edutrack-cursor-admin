@@ -385,25 +385,37 @@ function numFromFirestore(v: unknown, fallback = 0): number {
   return fallback;
 }
 
-export async function getBudgetPlans(): Promise<BudgetPlan[]> {
-  if (isSandbox()) return sandboxGetBudgetPlans();
+export async function getBudgetPlans(academicYear?: string): Promise<BudgetPlan[]> {
+  if (isSandbox()) {
+    const list = await sandboxGetBudgetPlans();
+    if (academicYear == null || academicYear.trim() === '') return list;
+    return list.filter((p) => String(p.academicYear ?? '').trim() === academicYear.trim());
+  }
   const db = getDb();
   if (!db) return [];
   const snap = await getDocs(query(collection(db, COLLECTIONS.BUDGET_PLANS), orderBy('updatedAt', 'desc')));
-  return snap.docs.map((d) => {
+  let rows = snap.docs.map((d) => {
     const data = d.data();
     const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
     const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
     return {
       id: d.id,
+      academicYear: String(data.academicYear ?? '').trim(),
       name: data.name ?? '',
       budgetTotal: numFromFirestore(data.budgetTotal),
       spentTotal: numFromFirestore(data.spentTotal),
+      closeByDate: data.closeByDate != null ? String(data.closeByDate) : '',
+      closureRequirements: data.closureRequirements != null ? String(data.closureRequirements) : '',
       note: data.note ?? '',
       createdAt,
       updatedAt,
-    };
+    } as BudgetPlan;
   });
+  if (academicYear != null && academicYear.trim() !== '') {
+    const y = academicYear.trim();
+    rows = rows.filter((p) => p.academicYear === y);
+  }
+  return rows;
 }
 
 export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: string }) {
@@ -414,9 +426,12 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
   const budgetTotal = Math.max(0, numFromFirestore(payload.budgetTotal));
   const spentTotal = Math.max(0, numFromFirestore(payload.spentTotal));
   const data: DocumentData = {
+    academicYear: String(payload.academicYear ?? '').trim(),
     name: payload.name ?? '',
     budgetTotal,
     spentTotal,
+    closeByDate: String(payload.closeByDate ?? '').trim(),
+    closureRequirements: String(payload.closureRequirements ?? '').trim(),
     note: payload.note ?? '',
     updatedAt: serverTimestamp(),
   };
