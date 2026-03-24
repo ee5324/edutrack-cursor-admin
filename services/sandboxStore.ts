@@ -2,7 +2,31 @@
  * Sandbox 模式：記憶體內模擬 Firestore + GAS
  * 用於本地體驗程式流程，無需 Firebase / GAS 設定
  */
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission, BudgetPlan, BudgetPlanAdvance, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, BudgetPlanLedgerPaymentStatus, MonthlyRecurringTodoRule } from '../types';
+import type {
+  Student,
+  AwardRecord,
+  Vendor,
+  ArchiveTask,
+  TodoItem,
+  Attachment,
+  ExamPaper,
+  ExamPaperFolder,
+  ExamPaperCheck,
+  LanguageElectiveRosterDoc,
+  LanguageClassSetting,
+  CalendarSettings,
+  ExamCampaign,
+  ExamAwardsConfig,
+  ExamSubmitAllowedUser,
+  ExamSubmission,
+  BudgetPlan,
+  BudgetPlanPeriodKind,
+  BudgetPlanAdvance,
+  BudgetPlanLedgerEntry,
+  BudgetPlanLedgerKind,
+  BudgetPlanLedgerPaymentStatus,
+  MonthlyRecurringTodoRule,
+} from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 
 export interface SandboxCourseRecord {
@@ -115,6 +139,7 @@ const store = {
     {
       id: 'sandbox-bp-1',
       academicYear: '114',
+      periodKind: 'academic_year',
       name: '範例：本土語補助',
       accountingCode: '5010-01',
       budgetTotal: 50000,
@@ -354,9 +379,16 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
   const id = payload.id ?? uid();
   const now = new Date().toISOString();
   const idx = store.budgetPlans.findIndex((p) => p.id === id);
+  const prevKind: BudgetPlanPeriodKind | undefined =
+    idx >= 0 ? store.budgetPlans[idx].periodKind : undefined;
+  const periodKind: BudgetPlanPeriodKind =
+    payload.periodKind === 'calendar_year' || payload.periodKind === 'academic_year'
+      ? payload.periodKind
+      : prevKind ?? 'academic_year';
   const row: BudgetPlan = {
     id,
     academicYear: String(payload.academicYear ?? '').trim() || (idx >= 0 ? store.budgetPlans[idx].academicYear : ''),
+    periodKind,
     name: payload.name ?? '',
     accountingCode:
       String(payload.accountingCode ?? '').trim() ||

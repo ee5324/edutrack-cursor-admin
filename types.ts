@@ -309,11 +309,20 @@ export interface Vendor {
 /** 專案狀態：已結案者不再列入側邊「結案將屆」警示 */
 export type BudgetPlanStatus = 'active' | 'closed';
 
+/** 計畫所屬期間類型：年度（曆年）或學年度（2/1～隔年1/31）；舊資料未填視為學年度 */
+export type BudgetPlanPeriodKind = 'calendar_year' | 'academic_year';
+
 /** 計畫專案／預算：核配、已支出、預定佔用由支用明細同步；剩餘＝核配−已支出−預定佔用 */
 export interface BudgetPlan {
   id: string;
-  /** 學年度（例：114，與校務慣用民國年學年一致） */
+  /**
+   * 期間年度之民國數字（字串），語意依 periodKind：
+   * - 學年度：例 "114"＝114 學年度（114/2/1～115/1/31）
+   * - 年度：例 "115"＝115 年度（115/1/1～115/12/31）
+   */
   academicYear: string;
+  /** 年度或學年度；未存檔之舊資料由前端視為 academic_year */
+  periodKind?: BudgetPlanPeriodKind;
   /** 計畫名稱 */
   name: string;
   /** 會計代碼（請與主計／會計科目一致） */

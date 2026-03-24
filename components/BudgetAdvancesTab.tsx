@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banknote, Plus, Trash2, Save, Loader2, RefreshCw, Link2 } from 'lucide-react';
 import type { BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus } from '../types';
 import { getBudgetPlans, getBudgetPlanAdvances, saveBudgetPlanAdvance, deleteBudgetPlanAdvance } from '../services/api';
+import { periodKindLabel } from '../utils/budgetPlanPeriod';
 
 const fmtMoney = (n: number) =>
   n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -15,7 +16,8 @@ const STATUS_LABEL: Record<BudgetAdvanceStatus, string> = {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function planLabel(p: BudgetPlan): string {
-  return `${p.name}（${p.academicYear} · ${p.accountingCode || '—'}）`;
+  const k = periodKindLabel(p.periodKind);
+  return `${p.name}（${k} ${p.academicYear} · ${p.accountingCode || '—'}）`;
 }
 
 const BudgetAdvancesTab: React.FC = () => {
@@ -330,7 +332,7 @@ const BudgetAdvancesTab: React.FC = () => {
               <option value="">全部計畫</option>
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.academicYear} · {p.name}
+                  {periodKindLabel(p.periodKind)} {p.academicYear} · {p.name}
                 </option>
               ))}
             </select>
@@ -406,7 +408,7 @@ const BudgetAdvancesTab: React.FC = () => {
                         </select>
                         {p && (
                           <div className="text-[10px] text-slate-500 mt-0.5">
-                            {p.academicYear} 學年 · {p.accountingCode || '—'}
+                            {periodKindLabel(p.periodKind)} {p.academicYear} · {p.accountingCode || '—'}
                           </div>
                         )}
                         {missingPlan && <div className="text-[10px] text-amber-700">原計畫已刪除，請改掛其他計畫</div>}

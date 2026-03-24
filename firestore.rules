@@ -98,6 +98,10 @@ service cloud.firestore {
     match /subPool/{teacherId} {
       allow read, write: if canAccessSubteach();
     }
+    // 代課老師單日／每週固定「忙碌不接」紀錄（Subteach 專用；與 EduTrack／段考填報無涉）
+    match /substituteBusyBlocks/{blockId} {
+      allow read, write: if canAccessSubteach();
+    }
     match /languagePayrolls/{payrollId} {
       allow read, write: if canAccessSubteach();
     }

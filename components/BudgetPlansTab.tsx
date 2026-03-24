@@ -10,10 +10,15 @@ import {
   ArrowLeft,
   ChevronRight,
 } from 'lucide-react';
-import type { BudgetPlan, BudgetPlanStatus } from '../types';
+import type { BudgetPlan, BudgetPlanPeriodKind, BudgetPlanStatus } from '../types';
 import { getBudgetPlans, getBudgetPlan, saveBudgetPlan, deleteBudgetPlan } from '../services/api';
 import BudgetPlanLedgerPanel from './BudgetPlanLedgerPanel';
 import { closeDateAlertLabel } from '../utils/budgetPlanAlerts';
+import {
+  defaultFilterAcademicYearString,
+  periodKindLabel,
+  periodRangeDescription,
+} from '../utils/budgetPlanPeriod';
 
 const fmtMoney = (n: number) =>
   n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -36,7 +41,7 @@ function validateBudgetRequired(p: {
   closureRequirements: string;
   accountingCode: string;
 }): string | null {
-  if (!p.academicYear.trim()) return '請選擇學年度';
+  if (!p.academicYear.trim()) return '請選擇所屬民國年（年度或學年度）';
   if (!p.accountingCode.trim()) return '請填寫會計代碼';
   if (!p.closeByDate.trim() || !ISO_DATE.test(p.closeByDate.trim())) return '請填寫有效的計畫結案日期（YYYY-MM-DD）';
   if (!p.closureRequirements.trim()) return '請填寫結案要求';
@@ -53,8 +58,13 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [academicYear, setAcademicYear] = useState(defaultRocYear);
-  const [newPlanYear, setNewPlanYear] = useState(defaultRocYear);
+  /** 篩選：年度／學年度／全部 */
+  const [periodKindFilter, setPeriodKindFilter] = useState<'all' | BudgetPlanPeriodKind>('academic_year');
+  /** 篩選：民國年數字（與 periodKind 搭配；預設為目前學年度） */
+  const [academicYear, setAcademicYear] = useState(defaultFilterAcademicYearString);
+  const [newPlanYear, setNewPlanYear] = useState(defaultFilterAcademicYearString);
+  /** 新增計畫的期間類型（篩選為「全部」時預設學年度） */
+  const [newPlanPeriodKind, setNewPlanPeriodKind] = useState<BudgetPlanPeriodKind>('academic_year');
   const [newRow, setNewRow] = useState({
     name: '',
     accountingCode: '',
@@ -70,14 +80,15 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
     setLoading(true);
     setError(null);
     try {
-      const list = await getBudgetPlans(academicYear.trim() === '' ? undefined : academicYear);
+      const pk = periodKindFilter === 'all' ? 'all' : periodKindFilter;
+      const list = await getBudgetPlans(academicYear.trim() === '' ? undefined : academicYear, pk);
       setPlans(list);
     } catch (e: any) {
       setError(e?.message || '載入失敗');
     } finally {
       setLoading(false);
     }
-  }, [academicYear]);
+  }, [academicYear, periodKindFilter]);
 
   useEffect(() => {
     void load();
@@ -85,6 +96,8 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
 
   const handleSaveNew = async () => {
     const effectiveNewYear = academicYear.trim() === '' ? newPlanYear : academicYear;
+    const effectivePeriodKind: BudgetPlanPeriodKind =
+      periodKindFilter === 'all' ? newPlanPeriodKind : periodKindFilter;
     const ve = validateBudgetRequired({
       academicYear: effectiveNewYear,
       closeByDate: newRow.closeByDate,
@@ -105,6 +118,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
     try {
       const res = await saveBudgetPlan({
         academicYear: String(effectiveNewYear).trim(),
+        periodKind: effectivePeriodKind,
         name: newRow.name.trim(),
         accountingCode: newRow.accountingCode.trim(),
         budgetTotal: Number(newRow.budgetTotal) || 0,
@@ -150,6 +164,8 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   };
 
   const effectiveNewYear = academicYear.trim() === '' ? newPlanYear : academicYear;
+  const effectivePeriodKindForCreate: BudgetPlanPeriodKind =
+    periodKindFilter === 'all' ? newPlanPeriodKind : periodKindFilter;
   const canCreate =
     effectiveNewYear.trim() &&
     newRow.accountingCode.trim() &&
@@ -196,16 +212,32 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
 
       <div className="flex flex-wrap items-end gap-4 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">學年度</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1">期間類型</label>
+          <select
+            value={periodKindFilter}
+            onChange={(e) => setPeriodKindFilter(e.target.value as 'all' | BudgetPlanPeriodKind)}
+            className="border rounded-lg px-3 py-2 text-sm min-w-[12rem] bg-white"
+          >
+            <option value="all">全部類型</option>
+            <option value="academic_year">學年度（民國 n 年 2/1～隔年 1/31）</option>
+            <option value="calendar_year">年度（民國 n 年曆年 1/1～12/31）</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">民國年</label>
           <select
             value={academicYear}
             onChange={(e) => setAcademicYear(e.target.value)}
             className="border rounded-lg px-3 py-2 text-sm min-w-[10rem] bg-white"
           >
-            <option value="">全部學年（含未指定學年之舊資料）</option>
+            <option value="">全部（不按年篩選）</option>
             {yearList.map((y) => (
               <option key={y} value={y}>
-                {y} 學年度
+                {periodKindFilter === 'calendar_year'
+                  ? `${y} 年度`
+                  : periodKindFilter === 'academic_year'
+                    ? `${y} 學年度`
+                    : `${y}（可比對年度或學年度）`}
               </option>
             ))}
           </select>
@@ -229,11 +261,26 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
           <Plus size={16} />
           建立新計畫
-          {academicYear.trim() !== '' ? `（${academicYear} 學年度）` : ''}
+          {academicYear.trim() !== ''
+            ? `（${periodKindLabel(periodKindFilter === 'all' ? newPlanPeriodKind : periodKindFilter)} ${academicYear}）`
+            : ''}
         </h2>
+        {periodKindFilter === 'all' && (
+          <div className="max-w-xs">
+            <label className="block text-xs text-slate-500 mb-1">此計畫屬於</label>
+            <select
+              value={newPlanPeriodKind}
+              onChange={(e) => setNewPlanPeriodKind(e.target.value as BudgetPlanPeriodKind)}
+              className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white"
+            >
+              <option value="academic_year">學年度（2/1～隔年1/31）</option>
+              <option value="calendar_year">年度（曆年）</option>
+            </select>
+          </div>
+        )}
         {academicYear.trim() === '' && (
           <div className="max-w-xs">
-            <label className="block text-xs text-slate-500 mb-1">新增計畫所屬學年度</label>
+            <label className="block text-xs text-slate-500 mb-1">新增計畫所屬民國年</label>
             <select
               value={newPlanYear}
               onChange={(e) => setNewPlanYear(e.target.value)}
@@ -241,11 +288,16 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
             >
               {yearList.map((y) => (
                 <option key={y} value={y}>
-                  {y} 學年度
+                  {newPlanPeriodKind === 'calendar_year' ? `${y} 年度` : `${y} 學年度`}
                 </option>
               ))}
             </select>
           </div>
+        )}
+        {periodKindFilter !== 'all' && (
+          <p className="text-xs text-slate-500">
+            篩選為「{periodKindLabel(periodKindFilter)}」時，新計畫會自動帶入相同類型。
+          </p>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
@@ -329,7 +381,14 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
 
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-800 px-1">
-          計畫列表{academicYear.trim() !== '' ? `（${academicYear} 學年度）` : '（全部學年）'}
+          計畫列表
+          {periodKindFilter === 'all'
+            ? academicYear.trim() !== ''
+              ? `（民國 ${academicYear}，含年度／學年度）`
+              : '（全部）'
+            : academicYear.trim() !== ''
+              ? `（${periodKindLabel(periodKindFilter)} ${academicYear}）`
+              : `（全部 ${periodKindLabel(periodKindFilter)}）`}
         </h2>
         {loading && plans.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-sm flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white">
@@ -362,8 +421,14 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-semibold text-slate-900 truncate text-base">{p.name}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {p.academicYear} 學年度 · <span className="font-mono">{p.accountingCode || '—'}</span>
+                      <div className="text-xs text-slate-500 mt-0.5 space-y-0.5">
+                        <div>
+                          {periodKindLabel(p.periodKind)} {p.academicYear} ·{' '}
+                          <span className="font-mono">{p.accountingCode || '—'}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 leading-snug">
+                          {periodRangeDescription(p.periodKind ?? 'academic_year', p.academicYear)}
+                        </div>
                       </div>
                     </div>
                     <span
@@ -439,6 +504,7 @@ const BudgetPlanDetailView: React.FC<{
   const [saving, setSaving] = useState(false);
 
   const [status, setStatus] = useState<BudgetPlanStatus>('active');
+  const [periodKind, setPeriodKind] = useState<BudgetPlanPeriodKind>('academic_year');
   const [academicYear, setAcademicYear] = useState('');
   const [name, setName] = useState('');
   const [accountingCode, setAccountingCode] = useState('');
@@ -466,6 +532,7 @@ const BudgetPlanDetailView: React.FC<{
         }
         setPlan(p);
         setStatus(p.status === 'closed' ? 'closed' : 'active');
+        setPeriodKind(p.periodKind ?? 'academic_year');
         setAcademicYear(p.academicYear || '');
         setName(p.name);
         setAccountingCode(p.accountingCode || '');
@@ -529,6 +596,7 @@ const BudgetPlanDetailView: React.FC<{
       await saveBudgetPlan({
         id: plan.id,
         status,
+        periodKind,
         academicYear,
         name: name.trim(),
         accountingCode,
@@ -636,7 +704,18 @@ const BudgetPlanDetailView: React.FC<{
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">學年度</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">期間類型</label>
+            <select
+              value={periodKind}
+              onChange={(e) => setPeriodKind(e.target.value as BudgetPlanPeriodKind)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="academic_year">學年度（2/1～隔年1/31）</option>
+              <option value="calendar_year">年度（曆年1/1～12/31）</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">民國年</label>
             <select
               value={academicYear}
               onChange={(e) => setAcademicYear(e.target.value)}
@@ -644,10 +723,13 @@ const BudgetPlanDetailView: React.FC<{
             >
               {yearList.map((y) => (
                 <option key={y} value={y}>
-                  {y} 學年度
+                  {periodKind === 'calendar_year' ? `${y} 年度` : `${y} 學年度`}
                 </option>
               ))}
             </select>
+            <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+              {periodRangeDescription(periodKind, academicYear)}
+            </p>
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-slate-600 mb-1">計畫名稱</label>

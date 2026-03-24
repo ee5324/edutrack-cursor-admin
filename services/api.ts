@@ -22,7 +22,29 @@ import {
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS, BUDGET_PLAN_LEDGER_SUBCOLLECTION } from './firebase';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
-import type { Student, AwardRecord, Vendor, ArchiveTask, TodoItem, Attachment, ExamPaper, ExamPaperFolder, ExamPaperCheck, LanguageElectiveStudent, LanguageElectiveRosterDoc, LanguageClassSetting, CalendarSettings, BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry, BudgetPlanLedgerKind, BudgetPlanLedgerPaymentStatus, MonthlyRecurringTodoRule } from '../types';
+import type {
+  Student,
+  AwardRecord,
+  Vendor,
+  ArchiveTask,
+  TodoItem,
+  Attachment,
+  ExamPaper,
+  ExamPaperFolder,
+  ExamPaperCheck,
+  LanguageElectiveStudent,
+  LanguageElectiveRosterDoc,
+  LanguageClassSetting,
+  CalendarSettings,
+  BudgetPlan,
+  BudgetPlanPeriodKind,
+  BudgetPlanAdvance,
+  BudgetAdvanceStatus,
+  BudgetPlanLedgerEntry,
+  BudgetPlanLedgerKind,
+  BudgetPlanLedgerPaymentStatus,
+  MonthlyRecurringTodoRule,
+} from '../types';
 import {
   isSandbox,
   mockGasPost,
@@ -398,14 +420,21 @@ function numFromFirestore(v: unknown, fallback = 0): number {
   return fallback;
 }
 
+function parseBudgetPlanPeriodKind(v: unknown): BudgetPlanPeriodKind | undefined {
+  if (v === 'calendar_year' || v === 'academic_year') return v;
+  return undefined;
+}
+
 function budgetPlanFromDoc(id: string, data: DocumentData): BudgetPlan {
   const updatedAt = data.updatedAt?.toDate?.()?.toISOString?.() ?? data.updatedAt ?? '';
   const createdAt = data.createdAt?.toDate?.()?.toISOString?.() ?? data.createdAt ?? '';
   const st = data.status;
   const statusParsed = st === 'closed' || st === 'active' ? st : undefined;
+  const periodKind = parseBudgetPlanPeriodKind(data.periodKind);
   return {
     id,
     academicYear: String(data.academicYear ?? '').trim(),
+    periodKind,
     name: data.name ?? '',
     accountingCode: data.accountingCode != null ? String(data.accountingCode) : '',
     budgetTotal: numFromFirestore(data.budgetTotal),
@@ -429,21 +458,37 @@ export async function getBudgetPlan(id: string): Promise<BudgetPlan | null> {
   return budgetPlanFromDoc(snap.id, snap.data());
 }
 
-export async function getBudgetPlans(academicYear?: string): Promise<BudgetPlan[]> {
+function filterBudgetPlansByYearAndKind(
+  rows: BudgetPlan[],
+  yearLabel?: string,
+  periodKind: 'all' | BudgetPlanPeriodKind = 'all'
+): BudgetPlan[] {
+  const y = yearLabel?.trim();
+  return rows.filter((p) => {
+    const kind: BudgetPlanPeriodKind = p.periodKind ?? 'academic_year';
+    if (periodKind !== 'all' && kind !== periodKind) return false;
+    if (y != null && y !== '' && String(p.academicYear ?? '').trim() !== y) return false;
+    return true;
+  });
+}
+
+/**
+ * @param yearLabel 民國年數字（例 114、115），空白則不按年篩選
+ * @param periodKind 年度／學年度；'all' 或省略則兩種都包含
+ */
+export async function getBudgetPlans(
+  yearLabel?: string,
+  periodKind: 'all' | BudgetPlanPeriodKind = 'all'
+): Promise<BudgetPlan[]> {
   if (isSandbox()) {
     const list = await sandboxGetBudgetPlans();
-    if (academicYear == null || academicYear.trim() === '') return list;
-    return list.filter((p) => String(p.academicYear ?? '').trim() === academicYear.trim());
+    return filterBudgetPlansByYearAndKind(list, yearLabel, periodKind);
   }
   const db = getDb();
   if (!db) return [];
   const snap = await getDocs(query(collection(db, COLLECTIONS.BUDGET_PLANS), orderBy('updatedAt', 'desc')));
-  let rows = snap.docs.map((d) => budgetPlanFromDoc(d.id, d.data()));
-  if (academicYear != null && academicYear.trim() !== '') {
-    const y = academicYear.trim();
-    rows = rows.filter((p) => p.academicYear === y);
-  }
-  return rows;
+  const rows = snap.docs.map((d) => budgetPlanFromDoc(d.id, d.data()));
+  return filterBudgetPlansByYearAndKind(rows, yearLabel, periodKind);
 }
 
 export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: string }) {
@@ -454,8 +499,15 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
   const budgetTotal = Math.max(0, numFromFirestore(payload.budgetTotal));
   const spentTotal = Math.max(0, numFromFirestore(payload.spentTotal));
   const plannedCommitTotal = Math.max(0, numFromFirestore(payload.plannedCommitTotal));
+  const existingSnap = await getDoc(doc(db, COLLECTIONS.BUDGET_PLANS, id));
+  const existingKind = existingSnap.exists() ? parseBudgetPlanPeriodKind(existingSnap.data().periodKind) : undefined;
+  const periodKind: BudgetPlanPeriodKind =
+    payload.periodKind === 'calendar_year' || payload.periodKind === 'academic_year'
+      ? payload.periodKind
+      : existingKind ?? 'academic_year';
   const data: DocumentData = {
     academicYear: String(payload.academicYear ?? '').trim(),
+    periodKind,
     name: payload.name ?? '',
     accountingCode: String(payload.accountingCode ?? '').trim(),
     budgetTotal,
