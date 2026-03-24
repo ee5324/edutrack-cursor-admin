@@ -35,6 +35,16 @@ export function defaultFilterAcademicYearString(): string {
   return String(currentRocAcademicYear());
 }
 
+/**
+ * 新增計畫時依期間類型帶入「現在」的民國年：
+ * - 學年度：2/1 起算；1 月仍屬上一學年度（例：民國 115 年 1 月 → 114 學年度）
+ * - 年度：曆年民國年（例：民國 115 年 → 115 年度）
+ */
+export function defaultRocYearStringForPeriodKind(kind: BudgetPlanPeriodKind, d = new Date()): string {
+  if (kind === 'calendar_year') return String(currentRocCalendarYear(d));
+  return String(currentRocAcademicYear(d));
+}
+
 /** 人類可讀期間（民國月日） */
 export function periodRangeDescription(kind: BudgetPlanPeriodKind | undefined, rocYearStr: string): string {
   const n = parseInt(rocYearStr, 10);

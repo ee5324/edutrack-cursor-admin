@@ -15,7 +15,7 @@ import { getBudgetPlans, getBudgetPlan, saveBudgetPlan, deleteBudgetPlan } from 
 import BudgetPlanLedgerPanel from './BudgetPlanLedgerPanel';
 import { closeDateAlertLabel } from '../utils/budgetPlanAlerts';
 import {
-  defaultFilterAcademicYearString,
+  defaultRocYearStringForPeriodKind,
   periodKindLabel,
   periodRangeDescription,
 } from '../utils/budgetPlanPeriod';
@@ -58,13 +58,13 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  /** 篩選：年度／學年度／全部 */
-  const [periodKindFilter, setPeriodKindFilter] = useState<'all' | BudgetPlanPeriodKind>('academic_year');
-  /** 篩選：民國年數字（與 periodKind 搭配；預設為目前學年度） */
-  const [academicYear, setAcademicYear] = useState(defaultFilterAcademicYearString);
-  const [newPlanYear, setNewPlanYear] = useState(defaultFilterAcademicYearString);
-  /** 新增計畫的期間類型（篩選為「全部」時預設學年度） */
+  /** 篩選：預設「全部類型」；管理者主動選取後才過濾 */
+  const [periodKindFilter, setPeriodKindFilter] = useState<'all' | BudgetPlanPeriodKind>('all');
+  /** 篩選：預設空白＝不按年過濾（顯示全部計畫） */
+  const [academicYear, setAcademicYear] = useState('');
+  /** 新增計畫用民國年（篩選未指定年份時以此為預設） */
   const [newPlanPeriodKind, setNewPlanPeriodKind] = useState<BudgetPlanPeriodKind>('academic_year');
+  const [newPlanYear, setNewPlanYear] = useState(() => defaultRocYearStringForPeriodKind('academic_year'));
   const [newRow, setNewRow] = useState({
     name: '',
     accountingCode: '',
@@ -93,6 +93,11 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** 切換「學年度／年度」時，民國年預設改為「現在的學年度」或「現在的曆年」（例：115 年 1 月 → 114 學年度、115 年度） */
+  useEffect(() => {
+    setNewPlanYear(defaultRocYearStringForPeriodKind(newPlanPeriodKind));
+  }, [newPlanPeriodKind]);
 
   const handleSaveNew = async () => {
     const effectiveNewYear = academicYear.trim() === '' ? newPlanYear : academicYear;
@@ -251,6 +256,9 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
           {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
           重新載入
         </button>
+        <p className="w-full basis-full text-xs text-slate-500 pt-2 border-t border-slate-100">
+          預設顯示<strong>全部計畫</strong>；請自行選擇「期間類型」或「民國年」後再篩選列表。
+        </p>
       </div>
 
       {error && (
