@@ -601,21 +601,32 @@ const TodoCalendar: React.FC = () => {
              <div className="flex gap-1 items-center">
                <button onClick={handlePrevMonth} className="p-1 hover:bg-gray-200 rounded"><ChevronLeft size={20} /></button>
                <button onClick={handleNextMonth} className="p-1 hover:bg-gray-200 rounded"><ChevronRight size={20} /></button>
-               <button onClick={() => setCurrentDate(new Date())} className="ml-2 text-xs px-2 py-1 bg-white border rounded hover:bg-gray-50 text-gray-700">今天</button>
+               <button type="button" onClick={() => setCurrentDate(new Date())} className="ml-2 inline-flex items-center justify-center h-8 min-h-8 px-2.5 text-xs leading-none bg-white border border-gray-300 rounded hover:bg-gray-50 text-gray-700 shrink-0">今天</button>
                
-               <div className="h-4 w-px bg-gray-300 mx-2"></div>
-               <button onClick={() => setIsDutyListOpen(true)} className="flex items-center px-2 py-1 bg-white text-gray-700 text-xs rounded border hover:bg-gray-50 transition-colors" title="輪值列表管理">
-                    <List size={14} className="mr-1"/> 輪值列表
-               </button>
-               <button onClick={handleOpenBatchDuty} className="flex items-center px-2 py-1 bg-red-50 text-red-700 border border-red-200 text-xs rounded hover:bg-red-100 transition-colors" title="設定處室輪值">
-                    <ShieldCheck size={14} className="mr-1"/> 輪值設定
+               <div className="h-4 w-px bg-gray-300 mx-2 shrink-0" aria-hidden />
+               <button
+                 type="button"
+                 onClick={() => setIsDutyListOpen(true)}
+                 className="inline-flex items-center justify-center gap-1 h-8 min-h-8 px-2.5 text-xs leading-none rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
+                 title="輪值列表管理"
+               >
+                 <List size={14} className="shrink-0" aria-hidden /> 輪值列表
                </button>
                <button
+                 type="button"
+                 onClick={handleOpenBatchDuty}
+                 className="inline-flex items-center justify-center gap-1 h-8 min-h-8 px-2.5 text-xs leading-none rounded border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors shrink-0"
+                 title="設定處室輪值"
+               >
+                 <ShieldCheck size={14} className="shrink-0" aria-hidden /> 輪值設定
+               </button>
+               <button
+                 type="button"
                  onClick={() => setIsMonthlyRecurringOpen(true)}
-                 className="flex items-center px-2 py-1 bg-teal-50 text-teal-800 border border-teal-200 text-xs rounded hover:bg-teal-100 transition-colors"
+                 className="inline-flex items-center justify-center gap-1 h-8 min-h-8 px-2.5 text-xs leading-none rounded border border-teal-200 bg-teal-50 text-teal-800 hover:bg-teal-100 transition-colors shrink-0"
                  title="每月固定出現的事項，可指定西曆月份"
                >
-                 <Repeat size={14} className="mr-1" /> 每月固定事項
+                 <Repeat size={14} className="shrink-0" aria-hidden /> 每月固定事項
                </button>
              </div>
           </div>
