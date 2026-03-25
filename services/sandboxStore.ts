@@ -507,6 +507,12 @@ export function sandboxSaveBudgetPlanLedgerEntry(
           ? prev.paymentStatus
           : 'planned'
       : undefined;
+  const allowPooling =
+    kind === 'expense'
+      ? payload.allowPooling !== undefined
+        ? payload.allowPooling === true
+        : (prev?.allowPooling ?? false)
+      : undefined;
   const row: BudgetPlanLedgerEntry = {
     id,
     budgetPlanId: planId,
@@ -515,6 +521,7 @@ export function sandboxSaveBudgetPlanLedgerEntry(
     title: String(payload.title).trim(),
     estimatedAmount,
     amount,
+    allowPooling,
     paymentStatus,
     expenseDate: kind === 'expense' ? String(payload.expenseDate ?? prev?.expenseDate ?? '').trim() : '',
     memo: payload.memo !== undefined ? String(payload.memo) : (prev?.memo ?? ''),

@@ -280,6 +280,12 @@ export interface BudgetPlanLedgerEntry {
   estimatedAmount: number;
   /** 實支金額（元）；依支付狀態決定是否計入計畫「已支出」，資料夾為 0 */
   amount: number;
+  /**
+   * 是否可勻支（納入同計畫的共用池計算）。
+   * - true：此支用列的額度/支出會併入「可勻支池」，池內可互相支應
+   * - false/未填：此支用列獨立計算，不可與池互通
+   */
+  allowPooling?: boolean;
   /** 支付／核銷狀態（僅支用列） */
   paymentStatus?: BudgetPlanLedgerPaymentStatus;
   /** 支用／入帳日期 YYYY-MM-DD（支用建議填寫） */

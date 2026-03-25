@@ -17,6 +17,8 @@ import type {
 } from '../types';
 import {
   getBudgetPlanLedgerEntries,
+  ledgerActualCountsTowardSpent,
+  ledgerPlannedCommitAmount,
   saveBudgetPlanLedgerEntry,
   deleteBudgetPlanLedgerEntry,
   updateBudgetPlanFinancialRollups,
@@ -229,6 +231,7 @@ const BudgetPlanLedgerPanel: React.FC<{
   const [formTitle, setFormTitle] = useState('');
   const [formEstimated, setFormEstimated] = useState('');
   const [formAmount, setFormAmount] = useState('');
+  const [formAllowPooling, setFormAllowPooling] = useState(false);
   const [formPaymentStatus, setFormPaymentStatus] = useState<BudgetPlanLedgerPaymentStatus>('planned');
   const [formDate, setFormDate] = useState('');
   const [formMemo, setFormMemo] = useState('');
@@ -279,6 +282,7 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormTitle('');
     setFormEstimated('');
     setFormAmount('');
+    setFormAllowPooling(false);
     setFormPaymentStatus('planned');
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormMemo('');
@@ -290,6 +294,7 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormTitle(entry.title);
     setFormEstimated(String(entry.estimatedAmount ?? 0));
     setFormAmount(String(entry.amount ?? 0));
+    setFormAllowPooling(entry.allowPooling === true);
     setFormPaymentStatus(entry.paymentStatus ?? 'settled');
     setFormDate(entry.expenseDate ?? '');
     setFormMemo(entry.memo ?? '');
@@ -316,6 +321,41 @@ const BudgetPlanLedgerPanel: React.FC<{
         return;
       }
     }
+
+    const usedAmount = (e: BudgetPlanLedgerEntry): number => {
+      if (e.kind !== 'expense') return 0;
+      return ledgerActualCountsTowardSpent(e) ? (e.amount || 0) : ledgerPlannedCommitAmount(e);
+    };
+
+    const validatePoolingBudget = (nextEntries: BudgetPlanLedgerEntry[], touched: BudgetPlanLedgerEntry) => {
+      if (touched.kind !== 'expense') return null;
+
+      const expenses = nextEntries.filter((e) => e.kind === 'expense');
+      const pooled = expenses.filter((e) => e.allowPooling === true);
+      const pooledBudget = pooled.reduce((s, e) => s + (e.estimatedAmount || 0), 0);
+      const pooledUsed = pooled.reduce((s, e) => s + usedAmount(e), 0);
+      const pooledRemaining = pooledBudget - pooledUsed;
+
+      if (touched.allowPooling === true) {
+        if (pooledRemaining < 0) {
+          return `「可勻支池」額度不足：池額度 ${fmtMoney(pooledBudget)}，已用/佔用 ${fmtMoney(pooledUsed)}，超出 ${fmtMoney(
+            Math.abs(pooledRemaining)
+          )}。請調整可勻支項目的預估/實支，或取消勾選「可勻支」。`;
+        }
+        return null;
+      }
+
+      const ownBudget = touched.estimatedAmount || 0;
+      const ownUsed = usedAmount(touched);
+      const ownRemaining = ownBudget - ownUsed;
+      if (ownRemaining < 0) {
+        return `此項目未勾選「可勻支」，不可用池額度勻支；目前額度 ${fmtMoney(ownBudget)}，已用/佔用 ${fmtMoney(ownUsed)}，超出 ${fmtMoney(
+          Math.abs(ownRemaining)
+        )}。`;
+      }
+      return null;
+    };
+
     setSaving(true);
     setError(null);
     try {
@@ -324,10 +364,42 @@ const BudgetPlanLedgerPanel: React.FC<{
         title: t,
         estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
         amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
+        allowPooling: formKind === 'expense' ? formAllowPooling : undefined,
         paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
         expenseDate: formKind === 'expense' ? formDate.trim() : '',
         memo: formMemo.trim(),
       };
+      const nextId = dialog.mode === 'edit' && dialog.entry ? dialog.entry.id : '__new__';
+      const nextParentId =
+        dialog.mode === 'edit' && dialog.entry
+          ? (dialog.entry.parentId ?? null)
+          : (dialog.parentId ?? null);
+      const touchedEntry: BudgetPlanLedgerEntry = {
+        id: nextId,
+        budgetPlanId: planId,
+        parentId: nextParentId,
+        kind: formKind,
+        title: t,
+        estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
+        amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
+        allowPooling: formKind === 'expense' ? formAllowPooling : undefined,
+        paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
+        expenseDate: formKind === 'expense' ? formDate.trim() : '',
+        memo: formMemo.trim(),
+        order: dialog.mode === 'edit' && dialog.entry ? dialog.entry.order : 0,
+        createdAt: dialog.mode === 'edit' && dialog.entry ? dialog.entry.createdAt : undefined,
+        updatedAt: dialog.mode === 'edit' && dialog.entry ? dialog.entry.updatedAt : undefined,
+      };
+      const nextEntries: BudgetPlanLedgerEntry[] =
+        dialog.mode === 'edit' && dialog.entry
+          ? entries.map((e) => (e.id === dialog.entry!.id ? { ...e, ...touchedEntry } : e))
+          : [...entries, touchedEntry];
+      const budgetErr = validatePoolingBudget(nextEntries, touchedEntry);
+      if (budgetErr) {
+        setError(budgetErr);
+        return;
+      }
+
       if (dialog.mode === 'edit' && dialog.entry) {
         base.id = dialog.entry.id;
       } else {
@@ -536,6 +608,21 @@ const BudgetPlanLedgerPanel: React.FC<{
                       className="w-full border rounded-lg px-2 py-1.5"
                     />
                   </div>
+                  <label className="flex items-start gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={formAllowPooling}
+                      onChange={(e) => setFormAllowPooling(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs text-slate-800">
+                      <span className="font-medium">可勻支（合併計算）</span>
+                      <span className="text-slate-500">
+                        {' '}
+                        勾選後會併入本計畫「可勻支池」；未勾選則此項目只能用自己的預估額度，不可由池補貼。
+                      </span>
+                    </span>
+                  </label>
                 </>
               )}
               <div>

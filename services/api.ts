@@ -584,6 +584,7 @@ function ledgerEntryFromDoc(planId: string, id: string, data: DocumentData): Bud
     title: String(data.title ?? ''),
     estimatedAmount: kind === 'expense' ? Math.max(0, numFromFirestore(data.estimatedAmount)) : 0,
     amount: numFromFirestore(data.amount),
+    allowPooling: kind === 'expense' ? data.allowPooling === true : undefined,
     paymentStatus:
       kind === 'expense'
         ? hasPaymentField
@@ -682,6 +683,12 @@ export async function saveBudgetPlanLedgerEntry(
   const expenseDate =
     kind === 'expense' ? String(payload.expenseDate ?? prev?.expenseDate ?? '').trim() : '';
   const memo = payload.memo !== undefined ? String(payload.memo) : (prev?.memo ?? '');
+  const allowPooling =
+    kind === 'expense'
+      ? payload.allowPooling !== undefined
+        ? payload.allowPooling === true
+        : (prev?.allowPooling ?? false)
+      : undefined;
 
   const docBody: DocumentData = {
     parentId,
@@ -696,6 +703,9 @@ export async function saveBudgetPlanLedgerEntry(
   };
   if (kind === 'expense' && expensePaymentStatus) {
     docBody.paymentStatus = expensePaymentStatus;
+  }
+  if (kind === 'expense') {
+    docBody.allowPooling = allowPooling === true;
   }
   if (!prev) docBody.createdAt = serverTimestamp();
   await setDoc(existingRef, docBody, { merge: true });
