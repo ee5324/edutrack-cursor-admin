@@ -74,8 +74,8 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
     closureRequirements: '',
     note: '',
   });
-  /** 「建立新計畫」表單區塊是否展開 */
-  const [createPlanOpen, setCreatePlanOpen] = useState(true);
+  /** 「建立新計畫」表單區塊是否展開（預設收合，有需要再點開） */
+  const [createPlanOpen, setCreatePlanOpen] = useState(false);
 
   const yearList = useMemo(() => yearOptions(), []);
 
