@@ -12,7 +12,13 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { BudgetPlan, BudgetPlanPeriodKind, BudgetPlanStatus } from '../types';
-import { getBudgetPlans, getBudgetPlan, saveBudgetPlan, deleteBudgetPlan } from '../services/api';
+import {
+  getBudgetPlans,
+  getBudgetPlan,
+  saveBudgetPlan,
+  deleteBudgetPlan,
+  saveBudgetPlanLedgerEntry,
+} from '../services/api';
 import BudgetPlanLedgerPanel from './BudgetPlanLedgerPanel';
 import { closeDateAlertLabel } from '../utils/budgetPlanAlerts';
 import {
@@ -74,6 +80,12 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
     closureRequirements: '',
     note: '',
   });
+  const [newPlanSubItems, setNewPlanSubItems] = useState<
+    { id: string; title: string; budgetAllocated: string; allowPooling: boolean }[]
+  >(() => [
+    { id: crypto.randomUUID?.() ?? `si-${Date.now()}-1`, title: '鐘點費', budgetAllocated: '', allowPooling: true },
+    { id: crypto.randomUUID?.() ?? `si-${Date.now()}-2`, title: '材料費', budgetAllocated: '', allowPooling: true },
+  ]);
   /** 「建立新計畫」表單區塊是否展開（預設收合，有需要再點開） */
   const [createPlanOpen, setCreatePlanOpen] = useState(false);
 
@@ -137,6 +149,30 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         status: 'active',
         note: newRow.note,
       });
+      const newId = (res as { id?: string })?.id;
+      if (newId) {
+        const items = newPlanSubItems
+          .map((x) => ({
+            ...x,
+            title: x.title.trim(),
+            budgetAllocatedNum: Math.max(0, Number(x.budgetAllocated) || 0),
+          }))
+          .filter((x) => x.title);
+        const sumAlloc = items.reduce((s, x) => s + x.budgetAllocatedNum, 0);
+        const planTotal = Math.max(0, Number(newRow.budgetTotal) || 0);
+        if (planTotal > 0 && sumAlloc > planTotal) {
+          throw new Error(`子項目分配額度合計 ${fmtMoney(sumAlloc)} 超過核配額度 ${fmtMoney(planTotal)}。請先調整分配額度。`);
+        }
+        for (const it of items) {
+          await saveBudgetPlanLedgerEntry(newId, {
+            kind: 'folder',
+            title: it.title,
+            parentId: null,
+            budgetAllocated: it.budgetAllocatedNum,
+            allowPooling: it.allowPooling,
+          });
+        }
+      }
       await load();
       onDataChanged?.();
       setNewRow({
@@ -147,7 +183,6 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         closureRequirements: '',
         note: '',
       });
-      const newId = (res as { id?: string })?.id;
       if (newId) setDetailPlanId(newId);
     } catch (e: any) {
       setError(e?.message || '儲存失敗');
@@ -377,9 +412,83 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                   step={1}
                   value={newRow.budgetTotal}
                   onChange={(e) => setNewRow((r) => ({ ...r, budgetTotal: e.target.value }))}
-                  className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm text-right tabular-nums"
                   placeholder="0"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-xs text-slate-500 mb-1">子項目分配（建立時先確定科目與可勻支）</label>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50"
+                    onClick={() =>
+                      setNewPlanSubItems((prev) => [
+                        ...prev,
+                        {
+                          id: crypto.randomUUID?.() ?? `si-${Date.now()}`,
+                          title: '',
+                          budgetAllocated: '',
+                          allowPooling: true,
+                        },
+                      ])
+                    }
+                  >
+                    + 新增子項目
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {newPlanSubItems.map((it) => (
+                    <div key={it.id} className="grid grid-cols-12 gap-2 items-center">
+                      <input
+                        className="col-span-5 border rounded-lg px-2 py-1.5 text-sm"
+                        placeholder="例：鐘點費"
+                        value={it.title}
+                        onChange={(e) =>
+                          setNewPlanSubItems((prev) =>
+                            prev.map((x) => (x.id === it.id ? { ...x, title: e.target.value } : x))
+                          )
+                        }
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="col-span-4 border rounded-lg px-2 py-1.5 text-sm text-right tabular-nums"
+                        placeholder="分配額度"
+                        value={it.budgetAllocated}
+                        onChange={(e) =>
+                          setNewPlanSubItems((prev) =>
+                            prev.map((x) => (x.id === it.id ? { ...x, budgetAllocated: e.target.value } : x))
+                          )
+                        }
+                      />
+                      <label className="col-span-2 flex items-center gap-2 text-xs text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={it.allowPooling}
+                          onChange={(e) =>
+                            setNewPlanSubItems((prev) =>
+                              prev.map((x) => (x.id === it.id ? { ...x, allowPooling: e.target.checked } : x))
+                            )
+                          }
+                        />
+                        可勻支
+                      </label>
+                      <button
+                        type="button"
+                        className="col-span-1 text-xs px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50"
+                        onClick={() => setNewPlanSubItems((prev) => prev.filter((x) => x.id !== it.id))}
+                        title="刪除"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-[11px] text-slate-500">
+                    子項目會建立成計畫內的「資料夾」。之後請在各子項目底下新增支用明細，系統會依子項目額度＋可勻支池控管超支。
+                  </p>
+                </div>
               </div>
               <div className="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600">
                 <strong>已支出</strong>請於建立計畫後，在計畫頁的「支用明細」逐筆新增支用紀錄；系統會自動加總並寫入「已支出」（建立時為 0）。

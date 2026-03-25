@@ -507,11 +507,13 @@ export function sandboxSaveBudgetPlanLedgerEntry(
           ? prev.paymentStatus
           : 'planned'
       : undefined;
-  const allowPooling =
-    kind === 'expense'
-      ? payload.allowPooling !== undefined
-        ? payload.allowPooling === true
-        : (prev?.allowPooling ?? false)
+  const allowPooling = payload.allowPooling !== undefined ? payload.allowPooling === true : (prev?.allowPooling ?? false);
+  const budgetAllocated =
+    kind === 'folder'
+      ? Math.max(
+          0,
+          Number(payload.budgetAllocated !== undefined ? payload.budgetAllocated : (prev?.budgetAllocated ?? 0)) || 0
+        )
       : undefined;
   const row: BudgetPlanLedgerEntry = {
     id,
@@ -521,6 +523,7 @@ export function sandboxSaveBudgetPlanLedgerEntry(
     title: String(payload.title).trim(),
     estimatedAmount,
     amount,
+    budgetAllocated,
     allowPooling,
     paymentStatus,
     expenseDate: kind === 'expense' ? String(payload.expenseDate ?? prev?.expenseDate ?? '').trim() : '',

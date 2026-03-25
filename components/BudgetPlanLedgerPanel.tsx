@@ -232,6 +232,8 @@ const BudgetPlanLedgerPanel: React.FC<{
   const [formEstimated, setFormEstimated] = useState('');
   const [formAmount, setFormAmount] = useState('');
   const [formAllowPooling, setFormAllowPooling] = useState(false);
+  const [formFolderBudgetAllocated, setFormFolderBudgetAllocated] = useState('');
+  const [formFolderAllowPooling, setFormFolderAllowPooling] = useState(false);
   const [formPaymentStatus, setFormPaymentStatus] = useState<BudgetPlanLedgerPaymentStatus>('planned');
   const [formDate, setFormDate] = useState('');
   const [formMemo, setFormMemo] = useState('');
@@ -283,6 +285,8 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormEstimated('');
     setFormAmount('');
     setFormAllowPooling(false);
+    setFormFolderBudgetAllocated('');
+    setFormFolderAllowPooling(false);
     setFormPaymentStatus('planned');
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormMemo('');
@@ -295,6 +299,8 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormEstimated(String(entry.estimatedAmount ?? 0));
     setFormAmount(String(entry.amount ?? 0));
     setFormAllowPooling(entry.allowPooling === true);
+    setFormFolderBudgetAllocated(String(entry.budgetAllocated ?? 0));
+    setFormFolderAllowPooling(entry.allowPooling === true);
     setFormPaymentStatus(entry.paymentStatus ?? 'settled');
     setFormDate(entry.expenseDate ?? '');
     setFormMemo(entry.memo ?? '');
@@ -321,37 +327,62 @@ const BudgetPlanLedgerPanel: React.FC<{
         return;
       }
     }
+    if (formKind === 'folder') {
+      const b = Number(formFolderBudgetAllocated);
+      if (!Number.isFinite(b) || b < 0) {
+        setError('子項目分配額度請填有效數字');
+        return;
+      }
+    }
 
     const usedAmount = (e: BudgetPlanLedgerEntry): number => {
       if (e.kind !== 'expense') return 0;
       return ledgerActualCountsTowardSpent(e) ? (e.amount || 0) : ledgerPlannedCommitAmount(e);
     };
 
-    const validatePoolingBudget = (nextEntries: BudgetPlanLedgerEntry[], touched: BudgetPlanLedgerEntry) => {
+    const validateFolderBudget = (nextEntries: BudgetPlanLedgerEntry[], touched: BudgetPlanLedgerEntry) => {
       if (touched.kind !== 'expense') return null;
 
-      const expenses = nextEntries.filter((e) => e.kind === 'expense');
-      const pooled = expenses.filter((e) => e.allowPooling === true);
-      const pooledBudget = pooled.reduce((s, e) => s + (e.estimatedAmount || 0), 0);
-      const pooledUsed = pooled.reduce((s, e) => s + usedAmount(e), 0);
-      const pooledRemaining = pooledBudget - pooledUsed;
+      const folders = nextEntries.filter((e) => e.kind === 'folder' && (e.parentId ?? null) === null);
+      const hasBudgetSetup = folders.some((f) => (f.budgetAllocated ?? 0) > 0);
+      if (!hasBudgetSetup) return null; // 舊資料相容：未設定子項目額度就不擋
 
-      if (touched.allowPooling === true) {
-        if (pooledRemaining < 0) {
+      const folderById = new Map(folders.map((f) => [f.id, f]));
+      const parentFolderId = touched.parentId ?? null;
+      if (!parentFolderId || !folderById.has(parentFolderId)) {
+        return '本計畫已設定子項目額度，請先在「子項目資料夾」內新增支用（不要放在根層）。';
+      }
+
+      const folder = folderById.get(parentFolderId)!;
+      const isPooled = folder.allowPooling === true;
+
+      const expenses = nextEntries.filter((e) => e.kind === 'expense' && e.parentId != null);
+      const usedByFolder = new Map<string, number>();
+      for (const ex of expenses) {
+        const pid = ex.parentId!;
+        usedByFolder.set(pid, (usedByFolder.get(pid) ?? 0) + usedAmount(ex));
+      }
+
+      if (isPooled) {
+        const pooledFolders = folders.filter((f) => f.allowPooling === true);
+        const pooledBudget = pooledFolders.reduce((s, f) => s + (f.budgetAllocated ?? 0), 0);
+        const pooledUsed = pooledFolders.reduce((s, f) => s + (usedByFolder.get(f.id) ?? 0), 0);
+        const remaining = pooledBudget - pooledUsed;
+        if (remaining < 0) {
           return `「可勻支池」額度不足：池額度 ${fmtMoney(pooledBudget)}，已用/佔用 ${fmtMoney(pooledUsed)}，超出 ${fmtMoney(
-            Math.abs(pooledRemaining)
-          )}。請調整可勻支項目的預估/實支，或取消勾選「可勻支」。`;
+            Math.abs(remaining)
+          )}。請調整子項目分配額度或支用金額。`;
         }
         return null;
       }
 
-      const ownBudget = touched.estimatedAmount || 0;
-      const ownUsed = usedAmount(touched);
-      const ownRemaining = ownBudget - ownUsed;
-      if (ownRemaining < 0) {
-        return `此項目未勾選「可勻支」，不可用池額度勻支；目前額度 ${fmtMoney(ownBudget)}，已用/佔用 ${fmtMoney(ownUsed)}，超出 ${fmtMoney(
-          Math.abs(ownRemaining)
-        )}。`;
+      const ownBudget = folder.budgetAllocated ?? 0;
+      const ownUsed = usedByFolder.get(folder.id) ?? 0;
+      const remaining = ownBudget - ownUsed;
+      if (remaining < 0) {
+        return `子項目「${folder.title}」未勾選可勻支，需各自控管額度：額度 ${fmtMoney(ownBudget)}，已用/佔用 ${fmtMoney(
+          ownUsed
+        )}，超出 ${fmtMoney(Math.abs(remaining))}。`;
       }
       return null;
     };
@@ -364,7 +395,8 @@ const BudgetPlanLedgerPanel: React.FC<{
         title: t,
         estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
         amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
-        allowPooling: formKind === 'expense' ? formAllowPooling : undefined,
+        allowPooling: formKind === 'expense' ? formAllowPooling : formKind === 'folder' ? formFolderAllowPooling : undefined,
+        budgetAllocated: formKind === 'folder' ? Number(formFolderBudgetAllocated) || 0 : undefined,
         paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
         expenseDate: formKind === 'expense' ? formDate.trim() : '',
         memo: formMemo.trim(),
@@ -382,7 +414,8 @@ const BudgetPlanLedgerPanel: React.FC<{
         title: t,
         estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
         amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
-        allowPooling: formKind === 'expense' ? formAllowPooling : undefined,
+        budgetAllocated: formKind === 'folder' ? Number(formFolderBudgetAllocated) || 0 : undefined,
+        allowPooling: formKind === 'expense' ? formAllowPooling : formKind === 'folder' ? formFolderAllowPooling : undefined,
         paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
         expenseDate: formKind === 'expense' ? formDate.trim() : '',
         memo: formMemo.trim(),
@@ -394,7 +427,7 @@ const BudgetPlanLedgerPanel: React.FC<{
         dialog.mode === 'edit' && dialog.entry
           ? entries.map((e) => (e.id === dialog.entry!.id ? { ...e, ...touchedEntry } : e))
           : [...entries, touchedEntry];
-      const budgetErr = validatePoolingBudget(nextEntries, touchedEntry);
+      const budgetErr = validateFolderBudget(nextEntries, touchedEntry);
       if (budgetErr) {
         setError(budgetErr);
         return;
@@ -558,6 +591,37 @@ const BudgetPlanLedgerPanel: React.FC<{
                   placeholder={formKind === 'folder' ? '資料夾名稱' : '例：影印費'}
                 />
               </div>
+              {formKind === 'folder' && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">子項目分配額度（元）</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={formFolderBudgetAllocated}
+                        onChange={(e) => setFormFolderBudgetAllocated(e.target.value)}
+                        className="w-full border rounded-lg px-2 py-1.5 text-right tabular-nums"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={formFolderAllowPooling}
+                        onChange={(e) => setFormFolderAllowPooling(e.target.checked)}
+                      />
+                      <span className="text-xs text-slate-800">
+                        <span className="font-medium">可勻支</span>
+                        <span className="text-slate-500">（勾選者合併成池）</span>
+                      </span>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    這個資料夾代表一個「子項目／科目」。後續請把支用明細新增在該子項目底下，系統才會依額度＋可勻支規則控管。
+                  </p>
+                </>
+              )}
               {formKind === 'expense' && (
                 <>
                   <div>
