@@ -8,6 +8,7 @@ import {
   RefreshCw,
   AlertTriangle,
   ArrowLeft,
+  ChevronDown,
   ChevronRight,
 } from 'lucide-react';
 import type { BudgetPlan, BudgetPlanPeriodKind, BudgetPlanStatus } from '../types';
@@ -73,6 +74,8 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
     closureRequirements: '',
     note: '',
   });
+  /** 「建立新計畫」表單區塊是否展開 */
+  const [createPlanOpen, setCreatePlanOpen] = useState(true);
 
   const yearList = useMemo(() => yearOptions(), []);
 
@@ -265,126 +268,144 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
-          <Plus size={16} />
-          建立新計畫
-          {academicYear.trim() !== ''
-            ? `（${periodKindLabel(periodKindFilter === 'all' ? newPlanPeriodKind : periodKindFilter)} ${academicYear}）`
-            : ''}
-        </h2>
-        {periodKindFilter === 'all' && (
-          <div className="max-w-xs">
-            <label className="block text-xs text-slate-500 mb-1">此計畫屬於</label>
-            <select
-              value={newPlanPeriodKind}
-              onChange={(e) => setNewPlanPeriodKind(e.target.value as BudgetPlanPeriodKind)}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white"
-            >
-              <option value="academic_year">學年度（2/1～隔年1/31）</option>
-              <option value="calendar_year">年度（曆年）</option>
-            </select>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setCreatePlanOpen((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50/90 transition-colors"
+          aria-expanded={createPlanOpen}
+        >
+          <span className="text-sm font-semibold text-slate-800 flex items-center gap-2 min-w-0">
+            <Plus size={16} className="shrink-0 text-emerald-600" />
+            <span className="truncate">
+              建立新計畫
+              {academicYear.trim() !== ''
+                ? `（${periodKindLabel(periodKindFilter === 'all' ? newPlanPeriodKind : periodKindFilter)} ${academicYear}）`
+                : ''}
+            </span>
+          </span>
+          <ChevronDown
+            size={20}
+            className={`shrink-0 text-slate-500 transition-transform ${createPlanOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {createPlanOpen && (
+          <div className="px-4 pb-4 pt-4 space-y-4 border-t border-slate-100">
+            {periodKindFilter === 'all' && (
+              <div className="max-w-xs">
+                <label className="block text-xs text-slate-500 mb-1">此計畫屬於</label>
+                <select
+                  value={newPlanPeriodKind}
+                  onChange={(e) => setNewPlanPeriodKind(e.target.value as BudgetPlanPeriodKind)}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white"
+                >
+                  <option value="academic_year">學年度（2/1～隔年1/31）</option>
+                  <option value="calendar_year">年度（曆年）</option>
+                </select>
+              </div>
+            )}
+            {academicYear.trim() === '' && (
+              <div className="max-w-xs">
+                <label className="block text-xs text-slate-500 mb-1">新增計畫所屬民國年</label>
+                <select
+                  value={newPlanYear}
+                  onChange={(e) => setNewPlanYear(e.target.value)}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white"
+                >
+                  {yearList.map((y) => (
+                    <option key={y} value={y}>
+                      {newPlanPeriodKind === 'calendar_year' ? `${y} 年度` : `${y} 學年度`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {periodKindFilter !== 'all' && (
+              <p className="text-xs text-slate-500">
+                篩選為「{periodKindLabel(periodKindFilter)}」時，新計畫會自動帶入相同類型。
+              </p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-slate-500 mb-1">計畫名稱</label>
+                <input
+                  value={newRow.name}
+                  onChange={(e) => setNewRow((r) => ({ ...r, name: e.target.value }))}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                  placeholder="例：本土語補助"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">
+                  會計代碼 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={newRow.accountingCode}
+                  onChange={(e) => setNewRow((r) => ({ ...r, accountingCode: e.target.value }))}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono"
+                  placeholder="例：5010-01"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">
+                  計畫結案時間 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={newRow.closeByDate}
+                  onChange={(e) => setNewRow((r) => ({ ...r, closeByDate: e.target.value }))}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-slate-500 mb-1">
+                  結案要求 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={newRow.closureRequirements}
+                  onChange={(e) => setNewRow((r) => ({ ...r, closureRequirements: e.target.value }))}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm min-h-[72px]"
+                  placeholder="例：完成經費核銷、繳交成果報告…"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">核配額度（元）</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={newRow.budgetTotal}
+                  onChange={(e) => setNewRow((r) => ({ ...r, budgetTotal: e.target.value }))}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                  placeholder="0"
+                />
+              </div>
+              <div className="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600">
+                <strong>已支出</strong>請於建立計畫後，在計畫頁的「支用明細」逐筆新增支用紀錄；系統會自動加總並寫入「已支出」（建立時為 0）。
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-slate-500 mb-1">備註（選填）</label>
+                <input
+                  value={newRow.note}
+                  onChange={(e) => setNewRow((r) => ({ ...r, note: e.target.value }))}
+                  className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <button
+                  type="button"
+                  disabled={!canCreate || savingId === 'new'}
+                  onClick={() => void handleSaveNew()}
+                  className="inline-flex items-center justify-center gap-1 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {savingId === 'new' ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  建立並進入計畫頁
+                </button>
+              </div>
+            </div>
           </div>
         )}
-        {academicYear.trim() === '' && (
-          <div className="max-w-xs">
-            <label className="block text-xs text-slate-500 mb-1">新增計畫所屬民國年</label>
-            <select
-              value={newPlanYear}
-              onChange={(e) => setNewPlanYear(e.target.value)}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm bg-white"
-            >
-              {yearList.map((y) => (
-                <option key={y} value={y}>
-                  {newPlanPeriodKind === 'calendar_year' ? `${y} 年度` : `${y} 學年度`}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {periodKindFilter !== 'all' && (
-          <p className="text-xs text-slate-500">
-            篩選為「{periodKindLabel(periodKindFilter)}」時，新計畫會自動帶入相同類型。
-          </p>
-        )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">計畫名稱</label>
-            <input
-              value={newRow.name}
-              onChange={(e) => setNewRow((r) => ({ ...r, name: e.target.value }))}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm"
-              placeholder="例：本土語補助"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">
-              會計代碼 <span className="text-red-500">*</span>
-            </label>
-            <input
-              value={newRow.accountingCode}
-              onChange={(e) => setNewRow((r) => ({ ...r, accountingCode: e.target.value }))}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm font-mono"
-              placeholder="例：5010-01"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">
-              計畫結案時間 <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="date"
-              value={newRow.closeByDate}
-              onChange={(e) => setNewRow((r) => ({ ...r, closeByDate: e.target.value }))}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">
-              結案要求 <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={newRow.closureRequirements}
-              onChange={(e) => setNewRow((r) => ({ ...r, closureRequirements: e.target.value }))}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm min-h-[72px]"
-              placeholder="例：完成經費核銷、繳交成果報告…"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">核配額度（元）</label>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={newRow.budgetTotal}
-              onChange={(e) => setNewRow((r) => ({ ...r, budgetTotal: e.target.value }))}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm"
-              placeholder="0"
-            />
-          </div>
-          <div className="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600">
-            <strong>已支出</strong>請於建立計畫後，在計畫頁的「支用明細」逐筆新增支用紀錄；系統會自動加總並寫入「已支出」（建立時為 0）。
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">備註（選填）</label>
-            <input
-              value={newRow.note}
-              onChange={(e) => setNewRow((r) => ({ ...r, note: e.target.value }))}
-              className="w-full border rounded-lg px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <button
-              type="button"
-              disabled={!canCreate || savingId === 'new'}
-              onClick={() => void handleSaveNew()}
-              className="inline-flex items-center justify-center gap-1 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
-            >
-              {savingId === 'new' ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              建立並進入計畫頁
-            </button>
-          </div>
-        </div>
       </div>
 
       <div className="space-y-3">
