@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, Plus, Trash2, Save, Loader2, RefreshCw, Link2 } from 'lucide-react';
-import type { BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus } from '../types';
-import { getBudgetPlans, getBudgetPlanAdvances, saveBudgetPlanAdvance, deleteBudgetPlanAdvance } from '../services/api';
+import { Banknote, Plus, Trash2, Save, Loader2, RefreshCw, Link2, Printer } from 'lucide-react';
+import type { BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry } from '../types';
+import {
+  getBudgetPlans,
+  getBudgetPlanAdvances,
+  getBudgetPlanLedgerEntries,
+  saveBudgetPlanAdvance,
+  deleteBudgetPlanAdvance,
+} from '../services/api';
 import { periodKindLabel } from '../utils/budgetPlanPeriod';
 
 const fmtMoney = (n: number) =>
@@ -14,6 +20,15 @@ const STATUS_LABEL: Record<BudgetAdvanceStatus, string> = {
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function escHtml(s: unknown): string {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 function planLabel(p: BudgetPlan): string {
   const k = periodKindLabel(p.periodKind);
@@ -28,8 +43,11 @@ const BudgetAdvancesTab: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [filterPlanId, setFilterPlanId] = useState('');
   const [filterStatus, setFilterStatus] = useState<'' | BudgetAdvanceStatus>('');
+  const [activePayee, setActivePayee] = useState<string>('');
+  const [ledgerChoices, setLedgerChoices] = useState<BudgetPlanLedgerEntry[]>([]);
   const [newRow, setNewRow] = useState({
     budgetPlanId: '',
+    ledgerEntryId: '',
     amount: '',
     advanceDate: new Date().toISOString().slice(0, 10),
     title: '',
@@ -62,6 +80,28 @@ const BudgetAdvancesTab: React.FC = () => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const pid = newRow.budgetPlanId.trim();
+    if (!pid) {
+      setLedgerChoices([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await getBudgetPlanLedgerEntries(pid);
+        if (cancelled) return;
+        setLedgerChoices(list.filter((e) => e.kind === 'expense'));
+      } catch {
+        if (cancelled) return;
+        setLedgerChoices([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [newRow.budgetPlanId]);
+
   const filteredAdvances = useMemo(() => {
     let rows = advances;
     if (filterPlanId.trim()) rows = rows.filter((a) => a.budgetPlanId === filterPlanId.trim());
@@ -69,15 +109,163 @@ const BudgetAdvancesTab: React.FC = () => {
     return rows;
   }, [advances, filterPlanId, filterStatus]);
 
+  // 若篩選變動導致目前點選的對象已無資料，則自動收合
+  useEffect(() => {
+    if (!activePayee) return;
+    const has = filteredAdvances.some((a) => ((a.paidBy ?? '').trim() || '（未填受款人）') === activePayee);
+    if (!has) setActivePayee('');
+  }, [activePayee, filteredAdvances]);
+
   const summary = useMemo(() => {
     const outstanding = filteredAdvances.filter((a) => a.status === 'outstanding');
     const totalOut = outstanding.reduce((s, a) => s + a.amount, 0);
     const byPlan = new Map<string, number>();
+    const byPayee = new Map<string, number>();
     for (const a of outstanding) {
       byPlan.set(a.budgetPlanId, (byPlan.get(a.budgetPlanId) ?? 0) + a.amount);
+      const payee = (a.paidBy ?? '').trim() || '（未填受款人）';
+      byPayee.set(payee, (byPayee.get(payee) ?? 0) + a.amount);
     }
-    return { totalOut, byPlan, outstandingCount: outstanding.length };
+    return { totalOut, byPlan, byPayee, outstandingCount: outstanding.length };
   }, [filteredAdvances]);
+
+  const activePayeeRows = useMemo(() => {
+    if (!activePayee) return [];
+    return filteredAdvances
+      .filter((a) => a.status === 'outstanding')
+      .filter((a) => ((a.paidBy ?? '').trim() || '（未填受款人）') === activePayee)
+      .sort((a, b) => (b.advanceDate || '').localeCompare(a.advanceDate || '') || b.amount - a.amount);
+  }, [activePayee, filteredAdvances]);
+
+  const activePayeeTotal = useMemo(
+    () => activePayeeRows.reduce((s, a) => s + (a.amount || 0), 0),
+    [activePayeeRows]
+  );
+
+  const openPrintPage = useCallback(
+    (mode: 'byPayeeOutstanding' | 'filteredList') => {
+      const now = new Date();
+      const title =
+        mode === 'byPayeeOutstanding'
+          ? `代墊清單（依受款人彙整／待歸還）`
+          : `代墊清單（目前篩選明細）`;
+      const rows =
+        mode === 'byPayeeOutstanding'
+          ? filteredAdvances.filter((a) => a.status === 'outstanding')
+          : filteredAdvances;
+
+      const planNameById = new Map(plans.map((p) => [p.id, p.name]));
+      const group = new Map<string, BudgetPlanAdvance[]>();
+      for (const a of rows) {
+        const payee = (a.paidBy ?? '').trim() || '（未填受款人）';
+        if (!group.has(payee)) group.set(payee, []);
+        group.get(payee)!.push(a);
+      }
+
+      const payees = [...group.entries()].sort((a, b) => {
+        const sumA = a[1].reduce((s, x) => s + (x.amount || 0), 0);
+        const sumB = b[1].reduce((s, x) => s + (x.amount || 0), 0);
+        return sumB - sumA || a[0].localeCompare(b[0], 'zh-TW');
+      });
+
+      const htmlSections =
+        payees.length === 0
+          ? `<p class="muted">無資料</p>`
+          : payees
+              .map(([payee, list]) => {
+                const total = list.reduce((s, x) => s + (x.amount || 0), 0);
+                const lines = [...list].sort((a, b) => (b.advanceDate || '').localeCompare(a.advanceDate || ''));
+                const trs = lines
+                  .map((a) => {
+                    const planName = planNameById.get(a.budgetPlanId) ?? a.budgetPlanId;
+                    return `<tr>
+  <td class="nowrap">${escHtml(a.advanceDate)}</td>
+  <td>${escHtml(STATUS_LABEL[a.status])}</td>
+  <td>${escHtml(planName)}</td>
+  <td>${escHtml(a.title)}</td>
+  <td class="num">${escHtml(fmtMoney(a.amount || 0))}</td>
+  <td>${escHtml(a.memo ?? '')}</td>
+</tr>`;
+                  })
+                  .join('\n');
+                return `<section class="page">
+  <div class="pageHeader">
+    <div>
+      <div class="h2">${escHtml(payee)}</div>
+      <div class="muted">${escHtml(mode === 'byPayeeOutstanding' ? '待歸還／沖銷' : '明細（依目前篩選）')}</div>
+    </div>
+    <div class="total">總額 ${escHtml(fmtMoney(total))}</div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="nowrap">日期</th>
+        <th>狀態</th>
+        <th>計畫</th>
+        <th>摘要</th>
+        <th class="num">金額</th>
+        <th>備註</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${trs}
+    </tbody>
+  </table>
+</section>`;
+              })
+              .join('\n');
+
+      const docHtml = `<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escHtml(title)}</title>
+  <style>
+    :root { --fg:#0f172a; --muted:#475569; --line:#e2e8f0; --bg:#ffffff; }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:24px; font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; color:var(--fg); background:var(--bg); }
+    .top { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:16px; }
+    .h1 { font-size:18px; font-weight:800; }
+    .meta { font-size:12px; color:var(--muted); }
+    .page { padding:16px 0; }
+    .pageHeader { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .h2 { font-size:16px; font-weight:800; }
+    .muted { font-size:12px; color:var(--muted); }
+    .total { font-size:14px; font-weight:800; }
+    table { width:100%; border-collapse: collapse; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px 8px; vertical-align: top; }
+    thead th { background:#f8fafc; text-align:left; }
+    .num { text-align:right; white-space:nowrap; font-variant-numeric: tabular-nums; }
+    .nowrap { white-space:nowrap; }
+    @media print {
+      body { padding: 10mm; }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div>
+      <div class="h1">${escHtml(title)}</div>
+      <div class="meta">產生時間：${escHtml(now.toLocaleString('zh-TW'))}</div>
+    </div>
+    <div class="meta">提示：此分頁可直接列印或存成 PDF</div>
+  </div>
+  ${htmlSections}
+  <script>setTimeout(() => { try { window.focus(); } catch(e) {} }, 50);</script>
+</body>
+</html>`;
+
+      const w = window.open('', '_blank', 'noopener,noreferrer');
+      if (!w) return;
+      w.document.open();
+      w.document.write(docHtml);
+      w.document.close();
+    },
+    [filteredAdvances, plans]
+  );
 
   const handleAdd = async () => {
     if (!newRow.budgetPlanId.trim()) {
@@ -102,6 +290,7 @@ const BudgetAdvancesTab: React.FC = () => {
     try {
       await saveBudgetPlanAdvance({
         budgetPlanId: newRow.budgetPlanId.trim(),
+        ledgerEntryId: newRow.ledgerEntryId.trim(),
         amount: amt,
         advanceDate: newRow.advanceDate.trim(),
         title: newRow.title.trim(),
@@ -111,6 +300,7 @@ const BudgetAdvancesTab: React.FC = () => {
       });
       setNewRow({
         budgetPlanId: newRow.budgetPlanId,
+        ledgerEntryId: '',
         amount: '',
         advanceDate: new Date().toISOString().slice(0, 10),
         title: '',
@@ -133,6 +323,7 @@ const BudgetAdvancesTab: React.FC = () => {
       await saveBudgetPlanAdvance({
         id: row.id,
         budgetPlanId: row.budgetPlanId,
+        ledgerEntryId: patch.ledgerEntryId !== undefined ? patch.ledgerEntryId : row.ledgerEntryId,
         amount: patch.amount !== undefined ? patch.amount : row.amount,
         advanceDate: patch.advanceDate !== undefined ? patch.advanceDate : row.advanceDate,
         title: patch.title !== undefined ? patch.title : row.title,
@@ -214,6 +405,108 @@ const BudgetAdvancesTab: React.FC = () => {
             </ul>
           )}
         </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:col-span-2 lg:col-span-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="text-xs font-medium text-slate-500">依受款人彙總（待歸還，篩選後）</div>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50"
+              onClick={() => {
+                openPrintPage('byPayeeOutstanding');
+              }}
+              disabled={summary.byPayee.size === 0}
+              title="開新分頁列印（依受款人彙整／待歸還）"
+            >
+              <Printer size={14} /> 列印清單
+            </button>
+          </div>
+          {summary.byPayee.size === 0 ? (
+            <p className="text-sm text-slate-400">無待歸還項目</p>
+          ) : (
+            <ul className="text-sm space-y-1 max-h-28 overflow-y-auto">
+              {[...summary.byPayee.entries()]
+                .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-TW'))
+                .map(([payee, amt]) => {
+                  const active = payee === activePayee;
+                  return (
+                    <li key={payee}>
+                      <button
+                        type="button"
+                        onClick={() => setActivePayee((prev) => (prev === payee ? '' : payee))}
+                        className={`w-full flex justify-between gap-2 px-2 py-1 rounded-lg border text-left hover:bg-slate-50 ${
+                          active ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-100 bg-white'
+                        }`}
+                        title="點擊查看細項"
+                      >
+                        <span className={`truncate ${active ? 'text-emerald-900 font-medium' : 'text-slate-700'}`}>
+                          {payee}
+                        </span>
+                        <span className={`shrink-0 tabular-nums ${active ? 'text-emerald-900 font-semibold' : 'text-slate-900 font-medium'}`}>
+                          ${fmtMoney(amt)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+          <p className="text-[11px] text-slate-500 mt-2">
+            建議在每筆代墊填「我要給誰（受款人）」；就能直接看到各受款人應付總額。
+          </p>
+
+          {activePayee ? (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/40 overflow-hidden">
+              <div className="px-3 py-2 border-b border-emerald-200/70 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-emerald-950 truncate">{activePayee} · 待歸還細項</div>
+                <div className="text-sm font-bold tabular-nums text-emerald-950">總額 ${fmtMoney(activePayeeTotal)}</div>
+              </div>
+              {activePayeeRows.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-slate-500">無符合的待歸還項目</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-white/60 text-slate-600 text-left">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold whitespace-nowrap">日期</th>
+                        <th className="px-3 py-2 font-semibold">計畫</th>
+                        <th className="px-3 py-2 font-semibold">摘要</th>
+                        <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">金額</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-emerald-100/80">
+                      {activePayeeRows.map((a) => {
+                        const p = planById.get(a.budgetPlanId);
+                        return (
+                          <tr key={a.id} className="bg-white/40">
+                            <td className="px-3 py-2 whitespace-nowrap align-top">{a.advanceDate}</td>
+                            <td className="px-3 py-2 align-top min-w-[10rem]">
+                              <div className="text-slate-800">{p ? p.name : a.budgetPlanId}</div>
+                              {p ? (
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  {periodKindLabel(p.periodKind)} {p.academicYear} · {p.accountingCode || '—'}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2 align-top min-w-[10rem]">
+                              <div className="text-slate-800">{a.title}</div>
+                              {a.memo ? <div className="text-[10px] text-slate-500 mt-0.5">{a.memo}</div> : null}
+                              {a.ledgerEntryId ? (
+                                <div className="text-[10px] text-slate-400 mt-0.5">連結支用：{a.ledgerEntryId}</div>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-2 text-right align-top whitespace-nowrap tabular-nums font-semibold text-slate-900">
+                              ${fmtMoney(a.amount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* 新增 */}
@@ -244,6 +537,34 @@ const BudgetAdvancesTab: React.FC = () => {
             {plans.length === 0 && !loading && (
               <p className="text-xs text-amber-700 mt-1">請先到「計畫專案」建立計畫後再新增代墊。</p>
             )}
+          </div>
+          <div className="md:col-span-2 lg:col-span-3">
+            <label className="block text-xs font-medium text-slate-600 mb-1">帶入支出項目（選填）</label>
+            <select
+              value={newRow.ledgerEntryId}
+              onChange={(e) => {
+                const id = e.target.value;
+                const ex = ledgerChoices.find((x) => x.id === id);
+                setNewRow((r) => ({
+                  ...r,
+                  ledgerEntryId: id,
+                  title: ex ? ex.title : r.title,
+                  amount: ex ? String(ex.amount ?? '') : r.amount,
+                }));
+              }}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              disabled={!newRow.budgetPlanId.trim() || ledgerChoices.length === 0}
+            >
+              <option value="">— 不帶入 —</option>
+              {ledgerChoices.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {(e.expenseDate ? `${e.expenseDate} · ` : '') + e.title}（實支 ${fmtMoney(e.amount)}）
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">
+              先選計畫後可挑選支用明細，系統會自動帶入摘要與金額，減少兩頁對照。
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">代墊金額（元）*</label>
@@ -290,7 +611,7 @@ const BudgetAdvancesTab: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">代墊人／對象（選填）</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">我要給誰（受款人，選填）</label>
             <input
               value={newRow.paidBy}
               onChange={(e) => setNewRow((r) => ({ ...r, paidBy: e.target.value }))}
@@ -348,6 +669,17 @@ const BudgetAdvancesTab: React.FC = () => {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50"
+              onClick={() => {
+                openPrintPage('filteredList');
+              }}
+              disabled={filteredAdvances.length === 0}
+              title="開新分頁列印（目前篩選明細）"
+            >
+              <Printer size={14} /> 列印清單
+            </button>
           </div>
         </div>
 
@@ -425,7 +757,10 @@ const BudgetAdvancesTab: React.FC = () => {
                           className="w-full border border-slate-200 rounded px-2 py-1 text-xs"
                         />
                         {row.paidBy ? (
-                          <div className="text-[10px] text-slate-500 mt-0.5">代墊：{row.paidBy}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">受款人：{row.paidBy}</div>
+                        ) : null}
+                        {row.ledgerEntryId ? (
+                          <div className="text-[10px] text-slate-400 mt-0.5">連結支用：{row.ledgerEntryId}</div>
                         ) : null}
                         {row.memo ? <div className="text-[10px] text-slate-400 mt-0.5">{row.memo}</div> : null}
                       </td>

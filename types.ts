@@ -242,13 +242,15 @@ export interface BudgetPlanAdvance {
   id: string;
   /** 關聯的計畫專案 id（edutrack_budget_plans） */
   budgetPlanId: string;
+  /** 可選：連結到某一筆「支用明細」(ledger_entries) 的 expense 節點 id，用於帶入/對照 */
+  ledgerEntryId?: string;
   /** 代墊金額（元，正數） */
   amount: number;
   /** 代墊日期 YYYY-MM-DD */
   advanceDate: string;
   /** 摘要說明（例：報名費、材料費） */
   title: string;
-  /** 代墊人／受款對象等（選填） */
+  /** 我要給誰／受款人（選填；舊欄位沿用 paidBy 命名） */
   paidBy?: string;
   status: BudgetAdvanceStatus;
   memo?: string;

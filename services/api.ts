@@ -805,6 +805,7 @@ export async function getBudgetPlanAdvances(_filter?: { budgetPlanId?: string })
     return {
       id: d.id,
       budgetPlanId: String(data.budgetPlanId ?? '').trim(),
+      ledgerEntryId: data.ledgerEntryId != null ? String(data.ledgerEntryId) : '',
       amount: numFromFirestore(data.amount),
       advanceDate: data.advanceDate != null ? String(data.advanceDate) : '',
       title: data.title != null ? String(data.title) : '',
@@ -830,6 +831,7 @@ export async function saveBudgetPlanAdvance(
   const amount = Math.max(0, numFromFirestore(payload.amount));
   const data: DocumentData = {
     budgetPlanId: String(payload.budgetPlanId).trim(),
+    ledgerEntryId: payload.ledgerEntryId != null ? String(payload.ledgerEntryId).trim() : '',
     amount,
     advanceDate: String(payload.advanceDate ?? '').trim(),
     title: String(payload.title ?? '').trim(),

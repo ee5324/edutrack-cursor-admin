@@ -158,6 +158,7 @@ const store = {
     {
       id: 'sandbox-adv-1',
       budgetPlanId: 'sandbox-bp-1',
+      ledgerEntryId: 'led-e2',
       amount: 3200,
       advanceDate: new Date().toISOString().slice(0, 10),
       title: '範例：本土語競賽報名費代墊',
@@ -569,6 +570,7 @@ export function sandboxSaveBudgetPlanAdvance(
   const row: BudgetPlanAdvance = {
     id,
     budgetPlanId: String(payload.budgetPlanId).trim(),
+    ledgerEntryId: payload.ledgerEntryId != null ? String(payload.ledgerEntryId).trim() : '',
     amount: Math.max(0, Number(payload.amount) || 0),
     advanceDate: String(payload.advanceDate).trim(),
     title: String(payload.title).trim(),

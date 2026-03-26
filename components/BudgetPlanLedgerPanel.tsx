@@ -504,6 +504,10 @@ const BudgetPlanLedgerPanel: React.FC<{
 
       if (dialog.mode === 'edit' && dialog.entry) {
         base.id = dialog.entry.id;
+        // 允許編輯時移動到其他子項目（計畫採子項目額度結構時）
+        if (formKind === 'expense' && hasStructuredSubItems) {
+          base.parentId = formSubItemFolderId;
+        }
       } else {
         base.parentId =
           formKind === 'expense' && hasStructuredSubItems ? formSubItemFolderId : dialog.parentId;
