@@ -9,6 +9,8 @@ import {
   Loader2,
   ChevronRight,
   ChevronDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type {
   BudgetPlanLedgerEntry,
@@ -264,8 +266,11 @@ const BudgetPlanLedgerPanel: React.FC<{
         setExpanded(new Set(list.filter((e) => e.kind === 'folder').map((e) => e.id)));
         const sumSpent = sumBudgetPlanLedgerExpenses(list);
         const sumPlanned = sumBudgetPlanLedgerPlannedCommit(list);
+        const reservedByHiddenSubItems = list
+          .filter((e) => e.kind === 'folder' && (e.parentId ?? null) === null && e.hidden === true)
+          .reduce((s, e) => s + (e.budgetAllocated ?? 0), 0);
         if (alwaysSyncSpent || list.length > 0) {
-          await updateBudgetPlanFinancialRollups(planId, sumSpent, sumPlanned);
+          await updateBudgetPlanFinancialRollups(planId, sumSpent, sumPlanned, reservedByHiddenSubItems);
           onSpentSyncedRef.current?.();
         }
       } catch (e: any) {
@@ -668,8 +673,13 @@ const BudgetPlanLedgerPanel: React.FC<{
                         const used = usedBySubItemFolder.get(f.id) ?? 0;
                         const rem = alloc - used;
                         return (
-                          <tr key={f.id} className="border-t border-slate-100">
-                            <td className="px-3 py-2 font-medium text-slate-800">{f.title}</td>
+                          <tr key={f.id} className={`border-t border-slate-100 ${f.hidden ? 'bg-slate-50/70' : ''}`}>
+                            <td className="px-3 py-2 font-medium text-slate-800">
+                              <span className={f.hidden ? 'line-through text-slate-500' : ''}>{f.title}</span>
+                              {f.hidden ? (
+                                <span className="ml-2 text-[10px] text-slate-500 font-normal">（隱藏：不列入可運用）</span>
+                              ) : null}
+                            </td>
                             <td className="px-3 py-2 text-right tabular-nums">${fmtMoney(alloc)}</td>
                             <td className="px-3 py-2 text-center">{f.allowPooling ? '是' : '否'}</td>
                             <td className="px-3 py-2 text-right tabular-nums">${fmtMoney(used)}</td>
@@ -679,6 +689,33 @@ const BudgetPlanLedgerPanel: React.FC<{
                               ${fmtMoney(rem)}
                             </td>
                             <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={async () => {
+                                  setSaving(true);
+                                  setError(null);
+                                  try {
+                                    await saveBudgetPlanLedgerEntry(planId, {
+                                      id: f.id,
+                                      kind: 'folder',
+                                      title: f.title,
+                                      budgetAllocated: f.budgetAllocated ?? 0,
+                                      allowPooling: f.allowPooling === true,
+                                      hidden: !(f.hidden === true),
+                                    });
+                                    await pullLedger(true);
+                                  } catch (e: any) {
+                                    setError(e?.message || '更新失敗');
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                                className={`p-1 rounded ${f.hidden ? 'text-slate-600 hover:text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
+                                title={f.hidden ? '顯示（列入可運用）' : '隱藏（不列入可運用）'}
+                              >
+                                {f.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
                               <button
                                 type="button"
                                 disabled={saving}

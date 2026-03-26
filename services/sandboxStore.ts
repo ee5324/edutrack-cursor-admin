@@ -178,6 +178,7 @@ const store = {
         parentId: null,
         kind: 'folder',
         title: '教學材料與耗材',
+        hidden: false,
         estimatedAmount: 0,
         amount: 0,
         expenseDate: '',
@@ -432,7 +433,8 @@ export function sandboxDeleteBudgetPlan(payload: { id: string }) {
 export function sandboxUpdateBudgetPlanFinancialRollups(
   planId: string,
   spentTotal: number,
-  plannedCommitTotal: number
+  plannedCommitTotal: number,
+  reservedTotal?: number
 ) {
   const p = store.budgetPlans.find((x) => x.id === planId);
   if (!p) return Promise.resolve({ success: false as const });
@@ -440,6 +442,10 @@ export function sandboxUpdateBudgetPlanFinancialRollups(
   const pl = Number(plannedCommitTotal);
   p.spentTotal = Number.isFinite(s) && s >= 0 ? s : 0;
   p.plannedCommitTotal = Number.isFinite(pl) && pl >= 0 ? pl : 0;
+  if (reservedTotal !== undefined) {
+    const r = Number(reservedTotal);
+    p.reservedTotal = Number.isFinite(r) && r >= 0 ? r : 0;
+  }
   p.updatedAt = new Date().toISOString();
   return Promise.resolve({ success: true as const });
 }
@@ -523,12 +529,14 @@ export function sandboxSaveBudgetPlanLedgerEntry(
           Number(payload.budgetAllocated !== undefined ? payload.budgetAllocated : (prev?.budgetAllocated ?? 0)) || 0
         )
       : undefined;
+  const hidden = kind === 'folder' ? (payload.hidden !== undefined ? payload.hidden === true : (prev?.hidden ?? false)) : undefined;
   const row: BudgetPlanLedgerEntry = {
     id,
     budgetPlanId: planId,
     parentId: normalizedParent,
     kind,
     title: String(payload.title).trim(),
+    hidden,
     estimatedAmount,
     amount,
     budgetAllocated,
@@ -918,6 +926,11 @@ export function sandboxSaveMonthlyRecurringTodoRule(
 export function sandboxDeleteMonthlyRecurringTodoRule(payload: { id: string }) {
   store.monthlyRecurringRules = store.monthlyRecurringRules.filter((r) => r.id !== payload.id);
   return Promise.resolve({ success: true });
+}
+
+/** Sandbox: 學校教師名單（供受款人自動建議） */
+export function sandboxGetSchoolTeacherNames(): Promise<string[]> {
+  return Promise.resolve(['王小明', '林雅婷', '陳美玲', '張志豪', '李佩珊']);
 }
 
 export function sandboxUpdateMonthlyRecurringMonthStatus(payload: {

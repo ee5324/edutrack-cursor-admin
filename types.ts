@@ -278,6 +278,11 @@ export interface BudgetPlanLedgerEntry {
   kind: BudgetPlanLedgerKind;
   /** 資料夾名稱或支用摘要 */
   title: string;
+  /**
+   * （子項目/資料夾）是否隱藏：用於把「不能動支的部分」從可運用額度中排除
+   * - 僅對根層子項目(folder) 有意義
+   */
+  hidden?: boolean;
   /** 預估金額（元）；支用列用於規劃，資料夾為 0 */
   estimatedAmount: number;
   /** 實支金額（元）；依支付狀態決定是否計入計畫「已支出」，資料夾為 0 */

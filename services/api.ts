@@ -107,6 +107,7 @@ import {
   sandboxGetExamSubmissions,
   sandboxSaveExamSubmission,
   sandboxUnlockExamSubmission,
+  sandboxGetSchoolTeacherNames,
 } from './sandboxStore';
 import type { ExamCampaign, ExamAwardsConfig, ExamSubmitAllowedUser, ExamSubmission } from '../types';
 
@@ -120,6 +121,31 @@ async function gasPost(action: string, payload: unknown = {}): Promise<{ success
     body: JSON.stringify({ action, payload }),
   });
   return res.json();
+}
+
+/** 學校教師名單（供受款人輸入自動建議） */
+export async function getSchoolTeacherNames(): Promise<string[]> {
+  if (isSandbox()) return sandboxGetSchoolTeacherNames();
+  const db = getDb();
+  if (!db) return [];
+  try {
+    const snap = await getDocs(collection(db, 'teachers'));
+    const names = new Set<string>();
+    for (const d of snap.docs) {
+      const data = d.data();
+      const cands = [data.name, data.teacherName, data.displayName, data.fullName, data.chineseName, d.id];
+      for (const c of cands) {
+        const s = String(c ?? '').trim();
+        if (!s) continue;
+        // 避免把 email 當作姓名建議
+        if (s.includes('@')) continue;
+        names.add(s);
+      }
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'zh-TW'));
+  } catch {
+    return [];
+  }
 }
 
 // --- Courses & Students (Firestore) ---
@@ -585,6 +611,7 @@ function ledgerEntryFromDoc(planId: string, id: string, data: DocumentData): Bud
     parentId: normalizeLedgerParentId(data.parentId),
     kind,
     title: String(data.title ?? ''),
+    hidden: kind === 'folder' ? data.hidden === true : undefined,
     estimatedAmount: kind === 'expense' ? Math.max(0, numFromFirestore(data.estimatedAmount)) : 0,
     amount: numFromFirestore(data.amount),
     budgetAllocated: kind === 'folder' ? Math.max(0, numFromFirestore(data.budgetAllocated)) : undefined,
@@ -696,6 +723,10 @@ export async function saveBudgetPlanLedgerEntry(
           numFromFirestore(payload.budgetAllocated !== undefined ? payload.budgetAllocated : (prev?.budgetAllocated ?? 0))
         )
       : undefined;
+  const hidden =
+    kind === 'folder'
+      ? (payload.hidden !== undefined ? payload.hidden === true : (prev?.hidden ?? false))
+      : undefined;
 
   const docBody: DocumentData = {
     parentId,
@@ -712,7 +743,10 @@ export async function saveBudgetPlanLedgerEntry(
     docBody.paymentStatus = expensePaymentStatus;
   }
   docBody.allowPooling = allowPooling === true;
-  if (kind === 'folder') docBody.budgetAllocated = budgetAllocated ?? 0;
+  if (kind === 'folder') {
+    docBody.budgetAllocated = budgetAllocated ?? 0;
+    docBody.hidden = hidden === true;
+  }
   if (!prev) docBody.createdAt = serverTimestamp();
   await setDoc(existingRef, docBody, { merge: true });
   return { success: true as const, id };
@@ -766,18 +800,21 @@ export function sumBudgetPlanLedgerPlannedCommit(entries: BudgetPlanLedgerEntry[
 export async function updateBudgetPlanFinancialRollups(
   planId: string,
   spentTotal: number,
-  plannedCommitTotal: number
+  plannedCommitTotal: number,
+  reservedTotal?: number
 ) {
-  if (isSandbox()) return sandboxUpdateBudgetPlanFinancialRollups(planId, spentTotal, plannedCommitTotal);
+  if (isSandbox()) return sandboxUpdateBudgetPlanFinancialRollups(planId, spentTotal, plannedCommitTotal, reservedTotal);
   const db = getDb();
   if (!db) return { success: false as const };
   const spent = Math.max(0, numFromFirestore(spentTotal));
   const planned = Math.max(0, numFromFirestore(plannedCommitTotal));
-  await updateDoc(doc(db, COLLECTIONS.BUDGET_PLANS, planId), {
+  const patch: DocumentData = {
     spentTotal: spent,
     plannedCommitTotal: planned,
     updatedAt: serverTimestamp(),
-  });
+  };
+  if (reservedTotal !== undefined) patch.reservedTotal = Math.max(0, numFromFirestore(reservedTotal));
+  await updateDoc(doc(db, COLLECTIONS.BUDGET_PLANS, planId), patch);
   return { success: true as const };
 }
 

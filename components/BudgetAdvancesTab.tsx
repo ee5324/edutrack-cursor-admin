@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, Plus, Trash2, Save, Loader2, RefreshCw, Link2, Printer } from 'lucide-react';
+import { Banknote, Plus, Trash2, Save, Loader2, RefreshCw, Link2, Printer, ChevronDown } from 'lucide-react';
 import type { BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry } from '../types';
 import {
   getBudgetPlans,
   getBudgetPlanAdvances,
   getBudgetPlanLedgerEntries,
+  getSchoolTeacherNames,
   saveBudgetPlanAdvance,
   deleteBudgetPlanAdvance,
 } from '../services/api';
@@ -45,6 +46,8 @@ const BudgetAdvancesTab: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'' | BudgetAdvanceStatus>('');
   const [activePayee, setActivePayee] = useState<string>('');
   const [ledgerChoices, setLedgerChoices] = useState<BudgetPlanLedgerEntry[]>([]);
+  const [teacherNames, setTeacherNames] = useState<string[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
   const [newRow, setNewRow] = useState({
     budgetPlanId: '',
     ledgerEntryId: '',
@@ -79,6 +82,18 @@ const BudgetAdvancesTab: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const names = await getSchoolTeacherNames();
+      if (cancelled) return;
+      setTeacherNames(names);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const pid = newRow.budgetPlanId.trim();
@@ -141,6 +156,14 @@ const BudgetAdvancesTab: React.FC = () => {
     () => activePayeeRows.reduce((s, a) => s + (a.amount || 0), 0),
     [activePayeeRows]
   );
+
+  const payeeSuggestions = useMemo(() => {
+    const keyword = newRow.paidBy.trim();
+    const rows = keyword
+      ? teacherNames.filter((n) => n.toLowerCase().includes(keyword.toLowerCase()))
+      : teacherNames;
+    return rows.slice(0, 20);
+  }, [newRow.paidBy, teacherNames]);
 
   const openPrintPage = useCallback(
     (mode: 'byPayeeOutstanding' | 'filteredList') => {
@@ -354,11 +377,13 @@ const BudgetAdvancesTab: React.FC = () => {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/70 shadow-sm p-4 md:p-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Banknote className="text-amber-600" size={28} />
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-amber-100 border border-amber-200">
+              <Banknote className="text-amber-700" size={22} />
+            </span>
             計畫代墊紀錄
           </h1>
           <p className="text-sm text-slate-600 mt-1 max-w-xl">
@@ -369,7 +394,7 @@ const BudgetAdvancesTab: React.FC = () => {
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="flex items-center gap-1 px-3 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm border border-slate-200 rounded-xl bg-white hover:bg-slate-50 shadow-sm"
         >
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           重新載入
@@ -382,12 +407,12 @@ const BudgetAdvancesTab: React.FC = () => {
 
       {/* 摘要 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+        <div className="rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-amber-100/60 p-4 shadow-sm">
           <div className="text-xs font-medium text-amber-900/80 uppercase tracking-wide">待歸還／沖銷（篩選後）</div>
           <div className="text-2xl font-bold text-amber-900 mt-1">${fmtMoney(summary.totalOut)}</div>
           <div className="text-xs text-amber-800 mt-1">{summary.outstandingCount} 筆</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:col-span-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 shadow-sm">
           <div className="text-xs font-medium text-slate-500 mb-2">依計畫彙總（待歸還，篩選後）</div>
           {summary.byPlan.size === 0 ? (
             <p className="text-sm text-slate-400">無待歸還項目</p>
@@ -405,12 +430,12 @@ const BudgetAdvancesTab: React.FC = () => {
             </ul>
           )}
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:col-span-2 lg:col-span-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 lg:col-span-3 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-2">
             <div className="text-xs font-medium text-slate-500">依受款人彙總（待歸還，篩選後）</div>
             <button
               type="button"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white hover:bg-slate-50 shadow-sm"
               onClick={() => {
                 openPrintPage('byPayeeOutstanding');
               }}
@@ -433,8 +458,10 @@ const BudgetAdvancesTab: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setActivePayee((prev) => (prev === payee ? '' : payee))}
-                        className={`w-full flex justify-between gap-2 px-2 py-1 rounded-lg border text-left hover:bg-slate-50 ${
-                          active ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-100 bg-white'
+                        className={`w-full flex justify-between gap-2 px-2.5 py-1.5 rounded-xl border text-left transition-all ${
+                          active
+                            ? 'border-emerald-200 bg-emerald-50/70 shadow-sm'
+                            : 'border-slate-100 bg-white hover:bg-slate-50'
                         }`}
                         title="點擊查看細項"
                       >
@@ -510,12 +537,21 @@ const BudgetAdvancesTab: React.FC = () => {
       </div>
 
       {/* 新增 */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-          <Plus size={18} className="text-slate-600" />
-          <h2 className="font-semibold text-slate-800">新增代墊</h2>
-        </div>
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setCreateOpen((v) => !v)}
+          className="w-full px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-100/60 flex items-center justify-between gap-2 hover:from-slate-100 hover:to-slate-100"
+          aria-expanded={createOpen}
+        >
+          <span className="flex items-center gap-2">
+            <Plus size={18} className="text-slate-600" />
+            <span className="font-semibold text-slate-800">新增代墊</span>
+          </span>
+          <ChevronDown size={18} className={`text-slate-500 transition-transform ${createOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {createOpen ? (
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm bg-white">
           <div className="md:col-span-2 lg:col-span-3">
             <label className="block text-xs font-medium text-slate-600 mb-1">
               <Link2 size={12} className="inline mr-1" />
@@ -524,7 +560,7 @@ const BudgetAdvancesTab: React.FC = () => {
             <select
               value={newRow.budgetPlanId}
               onChange={(e) => setNewRow((r) => ({ ...r, budgetPlanId: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
             >
               <option value="">— 請選擇 —</option>
               {plans.map((p) => (
@@ -552,7 +588,7 @@ const BudgetAdvancesTab: React.FC = () => {
                   amount: ex ? String(ex.amount ?? '') : r.amount,
                 }));
               }}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
               disabled={!newRow.budgetPlanId.trim() || ledgerChoices.length === 0}
             >
               <option value="">— 不帶入 —</option>
@@ -574,7 +610,7 @@ const BudgetAdvancesTab: React.FC = () => {
               step={1}
               value={newRow.amount}
               onChange={(e) => setNewRow((r) => ({ ...r, amount: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
               placeholder="例如 1500"
             />
           </div>
@@ -584,7 +620,7 @@ const BudgetAdvancesTab: React.FC = () => {
               type="date"
               value={newRow.advanceDate}
               onChange={(e) => setNewRow((r) => ({ ...r, advanceDate: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
             />
           </div>
           <div>
@@ -592,7 +628,7 @@ const BudgetAdvancesTab: React.FC = () => {
             <select
               value={newRow.status}
               onChange={(e) => setNewRow((r) => ({ ...r, status: e.target.value as BudgetAdvanceStatus }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
             >
               {(Object.keys(STATUS_LABEL) as BudgetAdvanceStatus[]).map((k) => (
                 <option key={k} value={k}>
@@ -606,24 +642,31 @@ const BudgetAdvancesTab: React.FC = () => {
             <input
               value={newRow.title}
               onChange={(e) => setNewRow((r) => ({ ...r, title: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
               placeholder="例：競賽報名費、材料代買"
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">我要給誰（受款人，選填）</label>
             <input
+              list="teacher-name-suggestions"
               value={newRow.paidBy}
               onChange={(e) => setNewRow((r) => ({ ...r, paidBy: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
+              placeholder="輸入姓名會自動建議教師名單"
             />
+            <datalist id="teacher-name-suggestions">
+              {payeeSuggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </div>
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-slate-600 mb-1">備註（選填）</label>
             <input
               value={newRow.memo}
               onChange={(e) => setNewRow((r) => ({ ...r, memo: e.target.value }))}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
             />
           </div>
           <div className="md:col-span-2 lg:col-span-3 flex justify-end">
@@ -637,18 +680,23 @@ const BudgetAdvancesTab: React.FC = () => {
               儲存代墊紀錄
             </button>
           </div>
-        </div>
+          </div>
+        ) : (
+          <div className="px-4 py-3 text-xs text-slate-500">
+            點擊上方「新增代墊」展開表單。
+          </div>
+        )}
       </div>
 
       {/* 篩選與列表 */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap gap-3 items-center justify-between">
+      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex flex-wrap gap-3 items-center justify-between">
           <h2 className="font-semibold text-slate-800">紀錄列表</h2>
           <div className="flex flex-wrap gap-2 text-sm">
             <select
               value={filterPlanId}
               onChange={(e) => setFilterPlanId(e.target.value)}
-              className="border border-slate-300 rounded-lg px-2 py-1.5"
+              className="border border-slate-300 rounded-xl px-2.5 py-1.5 bg-white"
             >
               <option value="">全部計畫</option>
               {plans.map((p) => (
@@ -660,7 +708,7 @@ const BudgetAdvancesTab: React.FC = () => {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus((e.target.value || '') as '' | BudgetAdvanceStatus)}
-              className="border border-slate-300 rounded-lg px-2 py-1.5"
+              className="border border-slate-300 rounded-xl px-2.5 py-1.5 bg-white"
             >
               <option value="">全部狀態</option>
               {(Object.keys(STATUS_LABEL) as BudgetAdvanceStatus[]).map((k) => (
@@ -671,7 +719,7 @@ const BudgetAdvancesTab: React.FC = () => {
             </select>
             <button
               type="button"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs hover:bg-slate-50"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white hover:bg-slate-50 shadow-sm"
               onClick={() => {
                 openPrintPage('filteredList');
               }}
@@ -707,7 +755,7 @@ const BudgetAdvancesTab: React.FC = () => {
                   const p = planById.get(row.budgetPlanId);
                   const missingPlan = !p;
                   return (
-                    <tr key={row.id} className={missingPlan ? 'bg-amber-50/50' : ''}>
+                    <tr key={row.id} className={`${missingPlan ? 'bg-amber-50/50' : ''} hover:bg-slate-50/60 transition-colors`}>
                       <td className="px-3 py-2 whitespace-nowrap align-top">
                         <input
                           type="date"
