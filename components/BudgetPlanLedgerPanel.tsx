@@ -342,7 +342,17 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormAllowPooling(entry.allowPooling === true);
     setFormFolderBudgetAllocated(String(entry.budgetAllocated ?? 0));
     setFormFolderAllowPooling(entry.allowPooling === true);
-    setFormSubItemFolderId(entry.kind === 'expense' && entry.parentId ? entry.parentId : '');
+    // 若本計畫已啟用「子項目額度」結構，舊資料可能不在根層子項目之下，編輯時先自動帶入一個有效子項目
+    // 讓使用者能直接儲存修改（仍可自行改選）
+    setFormSubItemFolderId(
+      entry.kind === 'expense'
+        ? hasStructuredSubItems
+          ? entry.parentId && rootFolderIdSet.has(entry.parentId)
+            ? entry.parentId
+            : (rootFolders[0]?.id ?? '')
+          : entry.parentId ?? ''
+        : ''
+    );
     setFormPaymentStatus(entry.paymentStatus ?? 'settled');
     setFormDate(entry.expenseDate ?? '');
     setFormMemo(entry.memo ?? '');
