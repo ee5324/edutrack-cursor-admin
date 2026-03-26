@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Banknote, Plus, Trash2, Save, Loader2, RefreshCw, Link2, Printer, ChevronDown } from 'lucide-react';
 import type { BudgetPlan, BudgetPlanAdvance, BudgetAdvanceStatus, BudgetPlanLedgerEntry } from '../types';
 import {
@@ -47,6 +47,9 @@ const BudgetAdvancesTab: React.FC = () => {
   const [activePayee, setActivePayee] = useState<string>('');
   const [ledgerChoices, setLedgerChoices] = useState<BudgetPlanLedgerEntry[]>([]);
   const [teacherNames, setTeacherNames] = useState<string[]>([]);
+  const [payeeSuggestOpen, setPayeeSuggestOpen] = useState(false);
+  const [payeeSuggestActiveIdx, setPayeeSuggestActiveIdx] = useState(0);
+  const payeeBlurTimerRef = useRef<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newRow, setNewRow] = useState({
     budgetPlanId: '',
@@ -164,6 +167,28 @@ const BudgetAdvancesTab: React.FC = () => {
       : teacherNames;
     return rows.slice(0, 20);
   }, [newRow.paidBy, teacherNames]);
+
+  /** 新增代墊時，可帶入的支出項目：排除同計畫中已被代墊連結過的項目 */
+  const availableLedgerChoices = useMemo(() => {
+    const pid = newRow.budgetPlanId.trim();
+    if (!pid) return [];
+    const used = new Set(
+      advances
+        .filter((a) => a.budgetPlanId === pid)
+        .map((a) => (a.ledgerEntryId ?? '').trim())
+        .filter(Boolean)
+    );
+    return ledgerChoices.filter((e) => !used.has(e.id));
+  }, [advances, ledgerChoices, newRow.budgetPlanId]);
+
+  useEffect(() => {
+    if (!payeeSuggestOpen) return;
+    if (payeeSuggestions.length === 0) {
+      setPayeeSuggestActiveIdx(0);
+      return;
+    }
+    setPayeeSuggestActiveIdx((i) => Math.min(Math.max(i, 0), payeeSuggestions.length - 1));
+  }, [payeeSuggestOpen, payeeSuggestions]);
 
   const openPrintPage = useCallback(
     (mode: 'byPayeeOutstanding' | 'filteredList') => {
@@ -580,7 +605,7 @@ const BudgetAdvancesTab: React.FC = () => {
               value={newRow.ledgerEntryId}
               onChange={(e) => {
                 const id = e.target.value;
-                const ex = ledgerChoices.find((x) => x.id === id);
+                const ex = availableLedgerChoices.find((x) => x.id === id);
                 setNewRow((r) => ({
                   ...r,
                   ledgerEntryId: id,
@@ -589,17 +614,17 @@ const BudgetAdvancesTab: React.FC = () => {
                 }));
               }}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
-              disabled={!newRow.budgetPlanId.trim() || ledgerChoices.length === 0}
+              disabled={!newRow.budgetPlanId.trim() || availableLedgerChoices.length === 0}
             >
               <option value="">— 不帶入 —</option>
-              {ledgerChoices.map((e) => (
+              {availableLedgerChoices.map((e) => (
                 <option key={e.id} value={e.id}>
                   {(e.expenseDate ? `${e.expenseDate} · ` : '') + e.title}（實支 ${fmtMoney(e.amount)}）
                 </option>
               ))}
             </select>
             <p className="text-[11px] text-slate-500 mt-1">
-              先選計畫後可挑選支用明細，系統會自動帶入摘要與金額，減少兩頁對照。
+              先選計畫後可挑選支用明細，系統會自動帶入摘要與金額；已被代墊使用過的項目不會重複出現。
             </p>
           </div>
           <div>
@@ -648,18 +673,75 @@ const BudgetAdvancesTab: React.FC = () => {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">我要給誰（受款人，選填）</label>
-            <input
-              list="teacher-name-suggestions"
-              value={newRow.paidBy}
-              onChange={(e) => setNewRow((r) => ({ ...r, paidBy: e.target.value }))}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
-              placeholder="輸入姓名會自動建議教師名單"
-            />
-            <datalist id="teacher-name-suggestions">
-              {payeeSuggestions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
+            <div className="relative">
+              <input
+                value={newRow.paidBy}
+                onChange={(e) => {
+                  setNewRow((r) => ({ ...r, paidBy: e.target.value }));
+                  setPayeeSuggestOpen(true);
+                }}
+                onFocus={() => {
+                  if (payeeBlurTimerRef.current) window.clearTimeout(payeeBlurTimerRef.current);
+                  setPayeeSuggestOpen(true);
+                }}
+                onBlur={() => {
+                  // 延遲關閉，讓使用者可點擊建議項
+                  payeeBlurTimerRef.current = window.setTimeout(() => setPayeeSuggestOpen(false), 120);
+                }}
+                onKeyDown={(e) => {
+                  if (!payeeSuggestOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                    setPayeeSuggestOpen(true);
+                    return;
+                  }
+                  if (!payeeSuggestOpen || payeeSuggestions.length === 0) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setPayeeSuggestActiveIdx((i) => Math.min(i + 1, payeeSuggestions.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setPayeeSuggestActiveIdx((i) => Math.max(i - 1, 0));
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const picked = payeeSuggestions[payeeSuggestActiveIdx];
+                    if (picked) setNewRow((r) => ({ ...r, paidBy: picked }));
+                    setPayeeSuggestOpen(false);
+                  } else if (e.key === 'Escape') {
+                    setPayeeSuggestOpen(false);
+                  }
+                }}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200"
+                placeholder="輸入姓名會自動建議教師名單"
+              />
+              {payeeSuggestOpen ? (
+                <div className="absolute z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+                  {payeeSuggestions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-slate-400">查無相符教師姓名，可直接輸入。</div>
+                  ) : (
+                    <ul className="max-h-56 overflow-y-auto py-1">
+                      {payeeSuggestions.map((name, idx) => (
+                        <li key={name}>
+                          <button
+                            type="button"
+                            onMouseDown={(ev) => ev.preventDefault()}
+                            onClick={() => {
+                              setNewRow((r) => ({ ...r, paidBy: name }));
+                              setPayeeSuggestOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                              idx === payeeSuggestActiveIdx
+                                ? 'bg-amber-50 text-amber-900'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-slate-600 mb-1">備註（選填）</label>
