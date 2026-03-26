@@ -143,6 +143,7 @@ const store = {
       name: '範例：本土語補助',
       accountingCode: '5010-01',
       budgetTotal: 50000,
+      reservedTotal: 8000,
       spentTotal: 12000,
       plannedCommitTotal: 0,
       closeByDate: '2026-06-30',
@@ -394,6 +395,12 @@ export function sandboxSaveBudgetPlan(payload: Partial<BudgetPlan> & { name: str
       String(payload.accountingCode ?? '').trim() ||
       (idx >= 0 ? store.budgetPlans[idx].accountingCode : ''),
     budgetTotal: Number(payload.budgetTotal) >= 0 ? Number(payload.budgetTotal) : 0,
+    reservedTotal:
+      payload.reservedTotal !== undefined
+        ? Math.max(0, Number(payload.reservedTotal) || 0)
+        : idx >= 0
+          ? (store.budgetPlans[idx].reservedTotal ?? 0)
+          : 0,
     spentTotal: Number(payload.spentTotal) >= 0 ? Number(payload.spentTotal) : 0,
     plannedCommitTotal:
       payload.plannedCommitTotal !== undefined

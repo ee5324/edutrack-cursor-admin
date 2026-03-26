@@ -30,6 +30,12 @@ import {
 const fmtMoney = (n: number) =>
   n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
+function usableBudgetTotal(plan: Pick<BudgetPlan, 'budgetTotal' | 'reservedTotal'>): number {
+  const total = Number(plan.budgetTotal) || 0;
+  const reserved = Number(plan.reservedTotal) || 0;
+  return Math.max(0, total - Math.max(0, reserved));
+}
+
 function defaultRocYear(): string {
   return String(new Date().getFullYear() - 1911);
 }
@@ -150,6 +156,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         name: newRow.name.trim(),
         accountingCode: newRow.accountingCode.trim(),
         budgetTotal: newPlanBudgetTotalFromSubItems,
+        reservedTotal: 0,
         spentTotal: 0,
         plannedCommitTotal: 0,
         closeByDate: newRow.closeByDate.trim(),
@@ -539,7 +546,8 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
           <ul className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
             {plans.map((p) => {
               const planned = p.plannedCommitTotal ?? 0;
-              const remaining = (p.budgetTotal ?? 0) - (p.spentTotal ?? 0) - planned;
+              const usable = usableBudgetTotal(p);
+              const remaining = usable - (p.spentTotal ?? 0) - planned;
               const alertText = closeDateAlertLabel(p);
               const closed = p.status === 'closed';
               return (
@@ -591,7 +599,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 pt-1 tabular-nums">
-                      <span>核配 ${fmtMoney(p.budgetTotal ?? 0)}</span>
+                      <span>可運用 ${fmtMoney(usable)}</span>
                       <span>已支出 ${fmtMoney(p.spentTotal ?? 0)}</span>
                       {planned > 0 ? <span className="text-sky-800">預定佔用 ${fmtMoney(planned)}</span> : null}
                       <span className={remaining < 0 ? 'text-red-600 font-semibold' : 'font-semibold text-slate-800'}>
@@ -646,6 +654,7 @@ const BudgetPlanDetailView: React.FC<{
   const [name, setName] = useState('');
   const [accountingCode, setAccountingCode] = useState('');
   const [budgetTotal, setBudgetTotal] = useState('0');
+  const [reservedTotal, setReservedTotal] = useState('0');
   const [spentTotal, setSpentTotal] = useState('0');
   const [plannedCommitTotal, setPlannedCommitTotal] = useState('0');
   const [closeByDate, setCloseByDate] = useState('');
@@ -674,6 +683,7 @@ const BudgetPlanDetailView: React.FC<{
         setName(p.name);
         setAccountingCode(p.accountingCode || '');
         setBudgetTotal(String(p.budgetTotal));
+        setReservedTotal(String(p.reservedTotal ?? 0));
         setSpentTotal(String(p.spentTotal));
         setPlannedCommitTotal(String(p.plannedCommitTotal ?? 0));
         setCloseByDate(p.closeByDate || '');
@@ -704,8 +714,8 @@ const BudgetPlanDetailView: React.FC<{
     return closeDateAlertLabel({ ...plan, status, closeByDate } as BudgetPlan);
   }, [plan, status, closeByDate]);
 
-  const remaining =
-    (Number(budgetTotal) || 0) - (Number(spentTotal) || 0) - (Number(plannedCommitTotal) || 0);
+  const usableTotal = Math.max(0, (Number(budgetTotal) || 0) - Math.max(0, Number(reservedTotal) || 0));
+  const remaining = usableTotal - (Number(spentTotal) || 0) - (Number(plannedCommitTotal) || 0);
 
   const rowValid =
     name.trim() &&
@@ -738,6 +748,7 @@ const BudgetPlanDetailView: React.FC<{
         name: name.trim(),
         accountingCode,
         budgetTotal: Number(budgetTotal) || 0,
+        reservedTotal: Number(reservedTotal) || 0,
         spentTotal: Number(spentTotal) || 0,
         plannedCommitTotal: Number(plannedCommitTotal) || 0,
         closeByDate,
@@ -914,15 +925,36 @@ const BudgetPlanDetailView: React.FC<{
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">核配額度（元）</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">可運用額度（元）</label>
+            <div className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-right tabular-nums bg-emerald-50/60 text-emerald-950 font-semibold">
+              ${fmtMoney(usableTotal)}
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">可運用 = 總核配 − 保留金額（保留金額不在清單顯示）</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">保留金額（不顯示，元）</label>
             <input
               type="number"
               min={0}
               step={1}
-              value={budgetTotal}
-              onChange={(e) => setBudgetTotal(e.target.value)}
+              value={reservedTotal}
+              onChange={(e) => setReservedTotal(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-right tabular-nums"
             />
+            <details className="mt-1">
+              <summary className="text-[10px] text-slate-500 cursor-pointer select-none">調整總核配（進階）</summary>
+              <div className="mt-2">
+                <label className="block text-[10px] text-slate-500 mb-1">總核配（內部，元）</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={budgetTotal}
+                  onChange={(e) => setBudgetTotal(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-right tabular-nums bg-white"
+                />
+              </div>
+            </details>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">已支出（元）</label>
@@ -943,7 +975,7 @@ const BudgetPlanDetailView: React.FC<{
             </p>
           </div>
           <div className="sm:col-span-2 rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
-            <span className="text-xs text-slate-500">剩餘額度（核配 − 已支出 − 預定佔用）</span>
+            <span className="text-xs text-slate-500">剩餘額度（可運用 − 已支出 − 預定佔用）</span>
             <div
               className={`text-xl font-bold tabular-nums ${remaining < 0 ? 'text-red-600' : 'text-slate-900'}`}
             >

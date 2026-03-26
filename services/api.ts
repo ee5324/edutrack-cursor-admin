@@ -438,6 +438,7 @@ function budgetPlanFromDoc(id: string, data: DocumentData): BudgetPlan {
     name: data.name ?? '',
     accountingCode: data.accountingCode != null ? String(data.accountingCode) : '',
     budgetTotal: numFromFirestore(data.budgetTotal),
+    reservedTotal: numFromFirestore(data.reservedTotal),
     spentTotal: numFromFirestore(data.spentTotal),
     plannedCommitTotal: numFromFirestore(data.plannedCommitTotal),
     closeByDate: data.closeByDate != null ? String(data.closeByDate) : '',
@@ -497,6 +498,7 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
   if (!db) throw new Error('Firebase 未初始化');
   const id = payload.id ?? (crypto.randomUUID?.() ?? `bp-${Date.now()}`);
   const budgetTotal = Math.max(0, numFromFirestore(payload.budgetTotal));
+  const reservedTotal = Math.max(0, numFromFirestore(payload.reservedTotal));
   const spentTotal = Math.max(0, numFromFirestore(payload.spentTotal));
   const plannedCommitTotal = Math.max(0, numFromFirestore(payload.plannedCommitTotal));
   const existingSnap = await getDoc(doc(db, COLLECTIONS.BUDGET_PLANS, id));
@@ -511,6 +513,7 @@ export async function saveBudgetPlan(payload: Partial<BudgetPlan> & { name: stri
     name: payload.name ?? '',
     accountingCode: String(payload.accountingCode ?? '').trim(),
     budgetTotal,
+    reservedTotal,
     spentTotal,
     plannedCommitTotal,
     closeByDate: String(payload.closeByDate ?? '').trim(),

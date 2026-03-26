@@ -342,6 +342,12 @@ export interface BudgetPlan {
   /** 核配／計畫總額（元） */
   budgetTotal: number;
   /**
+   * 保留金額（元）：不想在畫面上曝光、但會占用核配總額的部分（例如特定用途專款）
+   * - 可運用額度 = budgetTotal - reservedTotal
+   * - 只顯示「可運用額度」給一般瀏覽；保留金額可在詳情頁調整
+   */
+  reservedTotal?: number;
+  /**
    * 已支出（元）：支用明細中狀態為「已執行待核銷」「核銷完畢」之實支加總（由明細同步）
    */
   spentTotal: number;
