@@ -49,6 +49,12 @@ function paymentStatusBadgeClass(st: BudgetPlanLedgerPaymentStatus | undefined):
 const fmtMoney = (n: number) =>
   n.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
+/** 單筆支用列計入額度控管的金額（已執行／核銷用實支；預定用 max(預估,實支)） */
+function expenseUsedForBudget(e: BudgetPlanLedgerEntry): number {
+  if (e.kind !== 'expense') return 0;
+  return ledgerActualCountsTowardSpent(e) ? (e.amount || 0) : ledgerPlannedCommitAmount(e);
+}
+
 function groupChildrenByParent(entries: BudgetPlanLedgerEntry[]): Map<string | null, BudgetPlanLedgerEntry[]> {
   const m = new Map<string | null, BudgetPlanLedgerEntry[]>();
   for (const e of entries) {
@@ -237,6 +243,8 @@ const BudgetPlanLedgerPanel: React.FC<{
   const [formPaymentStatus, setFormPaymentStatus] = useState<BudgetPlanLedgerPaymentStatus>('planned');
   const [formDate, setFormDate] = useState('');
   const [formMemo, setFormMemo] = useState('');
+  /** 平面模式：支用所屬子項目（對應根層 folder id，寫入 parentId） */
+  const [formSubItemFolderId, setFormSubItemFolderId] = useState('');
 
   /** 避免父層每次 render 傳新函式時，pullLedger 依賴變動 → useEffect 無限重跑、loading 閃爍 */
   const onSpentSyncedRef = useRef(onSpentSynced);
@@ -274,6 +282,36 @@ const BudgetPlanLedgerPanel: React.FC<{
   }, [planId, pullLedger]);
 
   const childrenMap = useMemo(() => groupChildrenByParent(entries), [entries]);
+
+  const rootFolders = useMemo(
+    () =>
+      entries
+        .filter((e) => e.kind === 'folder' && (e.parentId ?? null) === null)
+        .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'zh-TW')),
+    [entries]
+  );
+  const hasStructuredSubItems = useMemo(
+    () => rootFolders.some((f) => (f.budgetAllocated ?? 0) > 0),
+    [rootFolders]
+  );
+  const rootFolderIdSet = useMemo(() => new Set(rootFolders.map((f) => f.id)), [rootFolders]);
+  const subItemTitleById = useMemo(() => new Map(rootFolders.map((f) => [f.id, f.title])), [rootFolders]);
+  const usedBySubItemFolder = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const ex of entries) {
+      if (ex.kind !== 'expense' || !ex.parentId || !rootFolderIdSet.has(ex.parentId)) continue;
+      m.set(ex.parentId, (m.get(ex.parentId) ?? 0) + expenseUsedForBudget(ex));
+    }
+    return m;
+  }, [entries, rootFolderIdSet]);
+  const flatExpenses = useMemo(
+    () =>
+      entries
+        .filter((e) => e.kind === 'expense' && e.parentId != null && rootFolderIdSet.has(e.parentId))
+        .sort((a, b) => (b.expenseDate || '').localeCompare(a.expenseDate || '') || a.order - b.order),
+    [entries, rootFolderIdSet]
+  );
+
   const expenseTotal = useMemo(() => sumBudgetPlanLedgerExpenses(entries), [entries]);
   const estimatedTotal = useMemo(() => sumBudgetPlanLedgerEstimated(entries), [entries]);
   const plannedCommitTotal = useMemo(() => sumBudgetPlanLedgerPlannedCommit(entries), [entries]);
@@ -287,6 +325,9 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormAllowPooling(false);
     setFormFolderBudgetAllocated('');
     setFormFolderAllowPooling(false);
+    setFormSubItemFolderId(
+      kind === 'expense' && hasStructuredSubItems ? (rootFolders[0]?.id ?? '') : parentId ?? ''
+    );
     setFormPaymentStatus('planned');
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormMemo('');
@@ -301,6 +342,7 @@ const BudgetPlanLedgerPanel: React.FC<{
     setFormAllowPooling(entry.allowPooling === true);
     setFormFolderBudgetAllocated(String(entry.budgetAllocated ?? 0));
     setFormFolderAllowPooling(entry.allowPooling === true);
+    setFormSubItemFolderId(entry.kind === 'expense' && entry.parentId ? entry.parentId : '');
     setFormPaymentStatus(entry.paymentStatus ?? 'settled');
     setFormDate(entry.expenseDate ?? '');
     setFormMemo(entry.memo ?? '');
@@ -334,11 +376,12 @@ const BudgetPlanLedgerPanel: React.FC<{
         return;
       }
     }
-
-    const usedAmount = (e: BudgetPlanLedgerEntry): number => {
-      if (e.kind !== 'expense') return 0;
-      return ledgerActualCountsTowardSpent(e) ? (e.amount || 0) : ledgerPlannedCommitAmount(e);
-    };
+    if (formKind === 'expense' && hasStructuredSubItems) {
+      if (!formSubItemFolderId.trim() || !rootFolderIdSet.has(formSubItemFolderId)) {
+        setError('請選擇「從哪一筆子項目支出」');
+        return;
+      }
+    }
 
     const validateFolderBudget = (nextEntries: BudgetPlanLedgerEntry[], touched: BudgetPlanLedgerEntry) => {
       if (touched.kind !== 'expense') return null;
@@ -350,7 +393,7 @@ const BudgetPlanLedgerPanel: React.FC<{
       const folderById = new Map(folders.map((f) => [f.id, f]));
       const parentFolderId = touched.parentId ?? null;
       if (!parentFolderId || !folderById.has(parentFolderId)) {
-        return '本計畫已設定子項目額度，請先在「子項目資料夾」內新增支用（不要放在根層）。';
+        return '本計畫已設定子項目額度，請在支用表單選擇「從哪一筆子項目支出」。';
       }
 
       const folder = folderById.get(parentFolderId)!;
@@ -360,7 +403,7 @@ const BudgetPlanLedgerPanel: React.FC<{
       const usedByFolder = new Map<string, number>();
       for (const ex of expenses) {
         const pid = ex.parentId!;
-        usedByFolder.set(pid, (usedByFolder.get(pid) ?? 0) + usedAmount(ex));
+        usedByFolder.set(pid, (usedByFolder.get(pid) ?? 0) + expenseUsedForBudget(ex));
       }
 
       if (isPooled) {
@@ -395,7 +438,14 @@ const BudgetPlanLedgerPanel: React.FC<{
         title: t,
         estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
         amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
-        allowPooling: formKind === 'expense' ? formAllowPooling : formKind === 'folder' ? formFolderAllowPooling : undefined,
+        allowPooling:
+          formKind === 'expense'
+            ? hasStructuredSubItems
+              ? undefined
+              : formAllowPooling
+            : formKind === 'folder'
+              ? formFolderAllowPooling
+              : undefined,
         budgetAllocated: formKind === 'folder' ? Number(formFolderBudgetAllocated) || 0 : undefined,
         paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
         expenseDate: formKind === 'expense' ? formDate.trim() : '',
@@ -403,9 +453,11 @@ const BudgetPlanLedgerPanel: React.FC<{
       };
       const nextId = dialog.mode === 'edit' && dialog.entry ? dialog.entry.id : '__new__';
       const nextParentId =
-        dialog.mode === 'edit' && dialog.entry
-          ? (dialog.entry.parentId ?? null)
-          : (dialog.parentId ?? null);
+        formKind === 'expense' && hasStructuredSubItems
+          ? formSubItemFolderId
+          : dialog.mode === 'edit' && dialog.entry
+            ? (dialog.entry.parentId ?? null)
+            : (dialog.parentId ?? null);
       const touchedEntry: BudgetPlanLedgerEntry = {
         id: nextId,
         budgetPlanId: planId,
@@ -415,7 +467,14 @@ const BudgetPlanLedgerPanel: React.FC<{
         estimatedAmount: formKind === 'expense' ? Number(formEstimated) || 0 : 0,
         amount: formKind === 'expense' ? Number(formAmount) || 0 : 0,
         budgetAllocated: formKind === 'folder' ? Number(formFolderBudgetAllocated) || 0 : undefined,
-        allowPooling: formKind === 'expense' ? formAllowPooling : formKind === 'folder' ? formFolderAllowPooling : undefined,
+        allowPooling:
+          formKind === 'expense'
+            ? hasStructuredSubItems
+              ? undefined
+              : formAllowPooling
+            : formKind === 'folder'
+              ? formFolderAllowPooling
+              : undefined,
         paymentStatus: formKind === 'expense' ? formPaymentStatus : undefined,
         expenseDate: formKind === 'expense' ? formDate.trim() : '',
         memo: formMemo.trim(),
@@ -436,7 +495,8 @@ const BudgetPlanLedgerPanel: React.FC<{
       if (dialog.mode === 'edit' && dialog.entry) {
         base.id = dialog.entry.id;
       } else {
-        base.parentId = dialog.parentId;
+        base.parentId =
+          formKind === 'expense' && hasStructuredSubItems ? formSubItemFolderId : dialog.parentId;
       }
       await saveBudgetPlanLedgerEntry(planId, base);
       closeDialog();
@@ -451,7 +511,9 @@ const BudgetPlanLedgerPanel: React.FC<{
   const handleDelete = async (entry: BudgetPlanLedgerEntry) => {
     const msg =
       entry.kind === 'folder'
-        ? `確定刪除資料夾「${entry.title}」？其下所有子項目也會一併刪除。`
+        ? hasStructuredSubItems && (entry.parentId ?? null) === null
+          ? `確定刪除子項目「${entry.title}」？其下所有支用紀錄也會一併刪除。`
+          : `確定刪除資料夾「${entry.title}」？其下所有子項目也會一併刪除。`
         : `確定刪除此筆支用紀錄「${entry.title}」？`;
     if (!confirm(msg)) return;
     setSaving(true);
@@ -479,9 +541,19 @@ const BudgetPlanLedgerPanel: React.FC<{
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800">支用明細與分類（巢狀資料夾）</h2>
+          <h2 className="text-sm font-semibold text-slate-800">
+            {hasStructuredSubItems ? '子項目與支用明細' : '支用明細與分類（巢狀資料夾）'}
+          </h2>
           <p className="text-[11px] text-slate-500 mt-0.5">
-            「已執行待核銷／核銷完畢」的<strong>實支</strong>計入計畫<strong>已支出</strong>；「預定」以 max(預估, 實支) 計入<strong>預定佔用</strong>，兩者都會從核配扣<strong>剩餘額度</strong>。
+            {hasStructuredSubItems ? (
+              <>
+                已設定子項目額度時，請用「新增支用」並<strong>選擇從哪一筆子項目支出</strong>（備註可另填細節）；額度／可勻支依建立計畫時的子項目設定計算。
+              </>
+            ) : (
+              <>
+                「已執行待核銷／核銷完畢」的<strong>實支</strong>計入計畫<strong>已支出</strong>；「預定」以 max(預估, 實支) 計入<strong>預定佔用</strong>，兩者都會從核配扣<strong>剩餘額度</strong>。
+              </>
+            )}
           </p>
         </div>
         <div className="text-right text-xs text-slate-600 space-y-0.5">
@@ -503,22 +575,45 @@ const BudgetPlanLedgerPanel: React.FC<{
         )}
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => openCreate(null, 'folder')}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 text-xs font-medium hover:bg-amber-200"
-          >
-            <Folder size={14} /> 根層新增資料夾
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => openCreate(null, 'expense')}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700"
-          >
-            <Plus size={14} /> 根層新增支用
-          </button>
+          {hasStructuredSubItems ? (
+            <>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => openCreate(null, 'folder')}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 text-xs font-medium hover:bg-amber-200"
+              >
+                <Folder size={14} /> 新增子項目
+              </button>
+              <button
+                type="button"
+                disabled={saving || rootFolders.length === 0}
+                onClick={() => openCreate(null, 'expense')}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <Plus size={14} /> 新增支用
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => openCreate(null, 'folder')}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 text-xs font-medium hover:bg-amber-200"
+              >
+                <Folder size={14} /> 根層新增資料夾
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => openCreate(null, 'expense')}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700"
+              >
+                <Plus size={14} /> 根層新增支用
+              </button>
+            </>
+          )}
           <button
             type="button"
             disabled={loading}
@@ -533,6 +628,138 @@ const BudgetPlanLedgerPanel: React.FC<{
         {loading && entries.length === 0 ? (
           <div className="flex justify-center py-10 text-slate-500 text-sm">
             <Loader2 className="animate-spin mr-2" size={18} /> 載入明細…
+          </div>
+        ) : hasStructuredSubItems ? (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-xs font-semibold text-slate-700 mb-2">子項目（額度／可勻支）</h3>
+              {rootFolders.length === 0 ? (
+                <p className="text-sm text-slate-500">尚無子項目，請按「新增子項目」。</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">子項目</th>
+                        <th className="text-right px-3 py-2 font-medium">分配額度</th>
+                        <th className="text-center px-3 py-2 font-medium">可勻支</th>
+                        <th className="text-right px-3 py-2 font-medium">已用／佔用</th>
+                        <th className="text-right px-3 py-2 font-medium">剩餘</th>
+                        <th className="text-right px-3 py-2 font-medium w-24">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rootFolders.map((f) => {
+                        const alloc = f.budgetAllocated ?? 0;
+                        const used = usedBySubItemFolder.get(f.id) ?? 0;
+                        const rem = alloc - used;
+                        return (
+                          <tr key={f.id} className="border-t border-slate-100">
+                            <td className="px-3 py-2 font-medium text-slate-800">{f.title}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">${fmtMoney(alloc)}</td>
+                            <td className="px-3 py-2 text-center">{f.allowPooling ? '是' : '否'}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">${fmtMoney(used)}</td>
+                            <td
+                              className={`px-3 py-2 text-right tabular-nums font-medium ${rem < 0 ? 'text-red-600' : 'text-slate-800'}`}
+                            >
+                              ${fmtMoney(rem)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => openEdit(f)}
+                                className="p-1 text-slate-500 hover:text-blue-600 rounded"
+                                title="編輯"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void handleDelete(f)}
+                                className="p-1 text-slate-500 hover:text-red-600 rounded"
+                                title="刪除"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-slate-700 mb-2">支用明細（平面列表）</h3>
+              {flatExpenses.length === 0 ? (
+                <p className="text-sm text-slate-500">尚無支用，請按「新增支用」並選擇子項目。</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-slate-50 text-slate-600">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-medium">子項目</th>
+                        <th className="text-left px-3 py-2 font-medium">摘要</th>
+                        <th className="text-left px-3 py-2 font-medium">狀態</th>
+                        <th className="text-right px-3 py-2 font-medium">預估</th>
+                        <th className="text-right px-3 py-2 font-medium">實支</th>
+                        <th className="text-left px-3 py-2 font-medium">日期</th>
+                        <th className="text-left px-3 py-2 font-medium">備註</th>
+                        <th className="text-right px-3 py-2 font-medium w-20">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {flatExpenses.map((ex) => {
+                        const subTitle =
+                          ex.parentId != null ? (subItemTitleById.get(ex.parentId) ?? '—') : '—';
+                        return (
+                          <tr key={ex.id} className="border-t border-slate-100">
+                            <td className="px-3 py-2 text-slate-700">{subTitle}</td>
+                            <td className="px-3 py-2 font-medium text-slate-800">{ex.title}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`inline-flex px-1.5 py-0.5 rounded border text-[10px] font-medium ${paymentStatusBadgeClass(ex.paymentStatus)}`}
+                              >
+                                {PAYMENT_STATUS_LABEL[ex.paymentStatus ?? 'settled']}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums">${fmtMoney(ex.estimatedAmount ?? 0)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-800">
+                              ${fmtMoney(ex.amount)}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{ex.expenseDate || '—'}</td>
+                            <td className="px-3 py-2 text-slate-500 max-w-[10rem] truncate" title={ex.memo}>
+                              {ex.memo || '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => openEdit(ex)}
+                                className="p-1 text-slate-500 hover:text-blue-600 rounded"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onClick={() => void handleDelete(ex)}
+                                className="p-1 text-slate-500 hover:text-red-600 rounded"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         ) : entries.length === 0 ? (
           <p className="text-sm text-slate-500 py-6 text-center">尚無資料，請新增資料夾或支用紀錄。</p>
@@ -563,11 +790,19 @@ const BudgetPlanLedgerPanel: React.FC<{
             onClick={(ev) => ev.stopPropagation()}
           >
             <h3 className="font-semibold text-slate-900 mb-3">
-              {dialog.mode === 'create'
-                ? dialog.parentId
-                  ? '在資料夾內新增'
-                  : '在根層新增'
-                : '編輯項目'}
+              {hasStructuredSubItems
+                ? dialog.mode === 'create'
+                  ? formKind === 'folder'
+                    ? '新增子項目'
+                    : '新增支用'
+                  : formKind === 'folder'
+                    ? '編輯子項目'
+                    : '編輯支用'
+                : dialog.mode === 'create'
+                  ? dialog.parentId
+                    ? '在資料夾內新增'
+                    : '在根層新增'
+                  : '編輯項目'}
             </h3>
             <div className="space-y-3 text-sm">
               <div>
@@ -618,12 +853,32 @@ const BudgetPlanLedgerPanel: React.FC<{
                     </label>
                   </div>
                   <p className="text-[10px] text-slate-500">
-                    這個資料夾代表一個「子項目／科目」。後續請把支用明細新增在該子項目底下，系統才會依額度＋可勻支規則控管。
+                    此為計畫的子項目。支用請用「新增支用」並選擇本子項目；備註可另填細節。
                   </p>
                 </>
               )}
               {formKind === 'expense' && (
                 <>
+                  {hasStructuredSubItems && (
+                    <div>
+                      <label className="block text-xs text-slate-600 mb-1">從哪一筆子項目支出</label>
+                      <select
+                        value={formSubItemFolderId}
+                        onChange={(e) => setFormSubItemFolderId(e.target.value)}
+                        className="w-full border rounded-lg px-2 py-1.5"
+                      >
+                        <option value="">請選擇</option>
+                        {rootFolders.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.title}（額度 ${fmtMoney(f.budgetAllocated ?? 0)}）
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        與會計歸屬有關；下方「備註」可填發票、廠商等補充說明。
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs text-slate-600 mb-1">支付狀態</label>
                     <select
@@ -672,21 +927,23 @@ const BudgetPlanLedgerPanel: React.FC<{
                       className="w-full border rounded-lg px-2 py-1.5"
                     />
                   </div>
-                  <label className="flex items-start gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={formAllowPooling}
-                      onChange={(e) => setFormAllowPooling(e.target.checked)}
-                      className="mt-0.5"
-                    />
-                    <span className="text-xs text-slate-800">
-                      <span className="font-medium">可勻支（合併計算）</span>
-                      <span className="text-slate-500">
-                        {' '}
-                        勾選後會併入本計畫「可勻支池」；未勾選則此項目只能用自己的預估額度，不可由池補貼。
+                  {!hasStructuredSubItems && (
+                    <label className="flex items-start gap-2 p-2 rounded-lg border border-slate-200 bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={formAllowPooling}
+                        onChange={(e) => setFormAllowPooling(e.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span className="text-xs text-slate-800">
+                        <span className="font-medium">可勻支（合併計算）</span>
+                        <span className="text-slate-500">
+                          {' '}
+                          勾選後會併入本計畫「可勻支池」；未勾選則此項目只能用自己的預估額度，不可由池補貼。
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </label>
+                  )}
                 </>
               )}
               <div>
@@ -696,7 +953,11 @@ const BudgetPlanLedgerPanel: React.FC<{
                   onChange={(e) => setFormMemo(e.target.value)}
                   rows={3}
                   className="w-full border rounded-lg px-2 py-1.5 text-xs"
-                  placeholder="發票號碼、簽核單號、廠商…"
+                  placeholder={
+                    hasStructuredSubItems && formKind === 'expense'
+                      ? '發票號碼、簽核單號、廠商…（子項目請用上方選單）'
+                      : '發票號碼、簽核單號、廠商…'
+                  }
                 />
               </div>
             </div>

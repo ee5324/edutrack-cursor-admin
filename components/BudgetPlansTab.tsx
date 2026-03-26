@@ -476,7 +476,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                     </div>
                   ))}
                   <p className="text-[11px] text-slate-500">
-                    子項目會建立成計畫內的「資料夾」。之後請在各子項目底下新增支用明細，系統會依子項目額度＋可勻支池控管超支。
+                    子項目會建立為計畫內的科目（技術上為資料夾）。之後請用「新增支用」並選擇從哪一筆子項目支出，備註可填補充說明；系統依子項目額度＋可勻支池控管超支。
                   </p>
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-sm">
                     <span className="text-xs text-slate-600">核配額度（元）</span>
