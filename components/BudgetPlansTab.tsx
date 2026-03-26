@@ -75,7 +75,6 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   const [newRow, setNewRow] = useState({
     name: '',
     accountingCode: '',
-    budgetTotal: '',
     closeByDate: '',
     closureRequirements: '',
     note: '',
@@ -90,6 +89,15 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
   const [createPlanOpen, setCreatePlanOpen] = useState(false);
 
   const yearList = useMemo(() => yearOptions(), []);
+
+  /** 建立計畫時：核配額度＝已填名稱之子項目的分配額度合計（自動計算） */
+  const newPlanBudgetTotalFromSubItems = useMemo(
+    () =>
+      newPlanSubItems
+        .filter((x) => x.title.trim())
+        .reduce((s, x) => s + Math.max(0, Number(x.budgetAllocated) || 0), 0),
+    [newPlanSubItems]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,7 +149,7 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
         periodKind: effectivePeriodKind,
         name: newRow.name.trim(),
         accountingCode: newRow.accountingCode.trim(),
-        budgetTotal: Number(newRow.budgetTotal) || 0,
+        budgetTotal: newPlanBudgetTotalFromSubItems,
         spentTotal: 0,
         plannedCommitTotal: 0,
         closeByDate: newRow.closeByDate.trim(),
@@ -158,11 +166,6 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
             budgetAllocatedNum: Math.max(0, Number(x.budgetAllocated) || 0),
           }))
           .filter((x) => x.title);
-        const sumAlloc = items.reduce((s, x) => s + x.budgetAllocatedNum, 0);
-        const planTotal = Math.max(0, Number(newRow.budgetTotal) || 0);
-        if (planTotal > 0 && sumAlloc > planTotal) {
-          throw new Error(`子項目分配額度合計 ${fmtMoney(sumAlloc)} 超過核配額度 ${fmtMoney(planTotal)}。請先調整分配額度。`);
-        }
         for (const it of items) {
           await saveBudgetPlanLedgerEntry(newId, {
             kind: 'folder',
@@ -178,7 +181,6 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
       setNewRow({
         name: '',
         accountingCode: '',
-        budgetTotal: '',
         closeByDate: '',
         closureRequirements: '',
         note: '',
@@ -404,18 +406,6 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                   placeholder="例：完成經費核銷、繳交成果報告…"
                 />
               </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">核配額度（元）</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={newRow.budgetTotal}
-                  onChange={(e) => setNewRow((r) => ({ ...r, budgetTotal: e.target.value }))}
-                  className="w-full border rounded-lg px-2 py-1.5 text-sm text-right tabular-nums"
-                  placeholder="0"
-                />
-              </div>
               <div className="sm:col-span-2">
                 <div className="flex items-center justify-between gap-2">
                   <label className="block text-xs text-slate-500 mb-1">子項目分配（建立時先確定科目與可勻支）</label>
@@ -488,6 +478,15 @@ const BudgetPlansTab: React.FC<BudgetPlansTabProps> = ({ onDataChanged }) => {
                   <p className="text-[11px] text-slate-500">
                     子項目會建立成計畫內的「資料夾」。之後請在各子項目底下新增支用明細，系統會依子項目額度＋可勻支池控管超支。
                   </p>
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 px-3 py-2 text-sm">
+                    <span className="text-xs text-slate-600">核配額度（元）</span>
+                    <div className="text-lg font-semibold tabular-nums text-emerald-900">
+                      ${fmtMoney(newPlanBudgetTotalFromSubItems)}
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-1">
+                      由上方<strong>已填名稱</strong>之子項目的「分配額度」加總，無需手動輸入。
+                    </p>
+                  </div>
                 </div>
               </div>
               <div className="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-600">
