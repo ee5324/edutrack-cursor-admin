@@ -15,6 +15,7 @@ import ExamSubmissionsTab from './components/ExamSubmissionsTab';
 import BudgetPlansTab from './components/BudgetPlansTab';
 import BudgetAdvancesTab from './components/BudgetAdvancesTab';
 import ExamSubmitPublicPage from './components/ExamSubmitPublicPage';
+import LanguageHomeroomNotice from './components/LanguageHomeroomNotice';
 import { Settings, Database, CheckCircle, AlertTriangle, Loader2, Archive, Copy, ShieldCheck, KeyRound, BookOpen, Plus, Trash2, Upload, FileSpreadsheet, HelpCircle, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -640,6 +641,8 @@ const App: React.FC = () => {
         return <LanguageElectiveRoster />;
       case 'language-dashboard':
         return <LanguageElectiveDashboard />;
+      case 'language-homeroom-notice':
+        return <LanguageHomeroomNotice />;
       case 'attendance':
         return <AttendanceSheetPage />;
       case 'campus-map':
