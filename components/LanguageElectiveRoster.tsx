@@ -509,7 +509,7 @@ const LanguageElectiveRoster: React.FC = () => {
                 <div>
                   <label className="block text-xs text-slate-500 mb-0.5">選修語言</label>
                   <select value={newLanguage} onChange={(e) => setNewLanguage(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[6rem]">
-                    {languageOptions.map((opt) => (
+                    {effectiveLanguageOptions.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
@@ -687,7 +687,7 @@ const LanguageElectiveRoster: React.FC = () => {
                     onChange={(e) => setNewLanguage(e.target.value)}
                     className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-w-[6rem]"
                   >
-                    {languageOptions.map((opt) => (
+                    {effectiveLanguageOptions.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
@@ -877,7 +877,7 @@ const LanguageElectiveRoster: React.FC = () => {
                                   className="border rounded px-2 py-1 text-sm w-full max-w-[140px]"
                                 >
                                   {(() => {
-                                    const opts = new Set(languageOptions);
+                                    const opts = new Set(effectiveLanguageOptions);
                                     if (s.language && !opts.has(s.language)) opts.add(s.language);
                                     return Array.from(opts).map((opt) => (
                                       <option key={opt} value={opt}>{opt}</option>
