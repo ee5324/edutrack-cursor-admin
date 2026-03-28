@@ -28,6 +28,12 @@ import type {
   MonthlyRecurringTodoRule,
 } from '../types';
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
+import {
+  STUDENT_ROSTER_VERSION,
+  pickProfileDocId,
+  projectRosterFromPlainEntries,
+  applyLanguageElectiveSaveInMemory,
+} from './languageElectiveStudentBackend';
 
 export interface SandboxCourseRecord {
   id: string;
@@ -129,6 +135,8 @@ const store = {
   examPaperFolders: [] as ExamPaperFolder[],
   examPaperChecks: [] as ExamPaperCheck[],
   languageElective: {} as Record<string, LanguageElectiveRosterDoc>,
+  /** B 方案：學生主檔（記憶體） */
+  languageElectiveProfiles: {} as Record<string, Record<string, unknown>>,
   systemSettings: { languageOptions: [] as string[] },
   calendarSettings: {} as Record<string, CalendarSettings>,
   examCampaigns: [] as ExamCampaign[],
@@ -680,24 +688,60 @@ export function sandboxSetExamPaperCheck(payload: { grade: string; domain: strin
 
 // --- 學生語言選修登錄 ---
 export function sandboxGetLanguageElectiveRoster(academicYear: string): Promise<LanguageElectiveRosterDoc | null> {
-  const doc = store.languageElective[academicYear];
-  return Promise.resolve(doc ?? null);
+  const entries = Object.entries(store.languageElectiveProfiles).map(([id, data]) => ({
+    id,
+    data: data as Record<string, unknown>,
+  }));
+  const fromProfiles = projectRosterFromPlainEntries(entries, academicYear);
+  const legacy = store.languageElective[academicYear];
+  const v2 = legacy?.studentRosterVersion === STUDENT_ROSTER_VERSION;
+  let students = fromProfiles;
+  if (students.length === 0 && !v2 && legacy?.students?.length) {
+    students = legacy.students.map((st) => ({
+      ...st,
+      profileDocId: pickProfileDocId(st, academicYear),
+    }));
+  }
+  const doc: LanguageElectiveRosterDoc = {
+    academicYear,
+    semester: legacy?.semester,
+    students,
+    languageClassSettings: legacy?.languageClassSettings,
+    updatedAt: legacy?.updatedAt,
+    studentRosterVersion: legacy?.studentRosterVersion,
+  };
+  return Promise.resolve(doc);
 }
 
 export function sandboxGetAllLanguageElectiveRosters(): Promise<LanguageElectiveRosterDoc[]> {
-  return Promise.resolve(Object.values(store.languageElective));
+  const yearSet = new Set<string>(Object.keys(store.languageElective));
+  for (const data of Object.values(store.languageElectiveProfiles)) {
+    const d = data as Record<string, unknown>;
+    const ys = d.years as Record<string, unknown> | undefined;
+    if (ys) Object.keys(ys).forEach((k) => yearSet.add(k));
+    const ay = String(d.academicYear ?? '').trim();
+    if (ay) yearSet.add(ay);
+  }
+  const years = Array.from(yearSet).sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
+  return Promise.all(years.map((y) => sandboxGetLanguageElectiveRoster(y))).then((docs) =>
+    docs.filter((d): d is LanguageElectiveRosterDoc => d != null)
+  );
 }
 
 export function sandboxSaveLanguageElectiveRoster(
   academicYear: string,
-  students: { className: string; seat: string; name: string; language: string; languageClass?: string }[],
+  students: { className: string; seat: string; name: string; language: string; languageClass?: string; studentId?: string; profileDocId?: string }[],
   languageClassSettings?: LanguageClassSetting[]
 ): Promise<void> {
+  applyLanguageElectiveSaveInMemory(store.languageElectiveProfiles, academicYear, students);
+  const prev = store.languageElective[academicYear];
   store.languageElective[academicYear] = {
     academicYear,
-    students,
-    languageClassSettings,
+    languageClassSettings: languageClassSettings ?? prev?.languageClassSettings,
+    studentRosterVersion: STUDENT_ROSTER_VERSION,
+    students: [],
     updatedAt: new Date().toISOString(),
+    semester: prev?.semester,
   };
   return Promise.resolve();
 }

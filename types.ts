@@ -29,6 +29,13 @@ export interface LanguageElectiveStudent {
   language: string;
   /** 語言班別（對應語言班別設定之名稱） */
   languageClass?: string;
+  /** 學號（有則作為 Firestore 學生主檔 document id） */
+  studentId?: string;
+  /**
+   * 無學號時的穩定主檔 id（通常 PRE_ 開頭），由系統寫入後帶回前端以便 upsert。
+   * 亦可由系統依 學年+班級+座號+姓名 決定性產生。
+   */
+  profileDocId?: string;
 }
 
 /** 語言班別設定：教室、時間、教師（每學年一組） */
@@ -49,6 +56,8 @@ export interface LanguageElectiveRosterDoc {
   /** 語言班別設定：教室、時間、教師 */
   languageClassSettings?: LanguageClassSetting[];
   updatedAt?: string;
+  /** B 方案：學年 meta 標記，有則表示名單已改存學生主檔 */
+  studentRosterVersion?: number;
 }
 
 /** 頒獎 Doc 輸出選項（給 GAS / 整併用） */

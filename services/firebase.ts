@@ -85,6 +85,8 @@ export const COLLECTIONS = {
   EXAM_PAPER_FOLDERS: `${COLLECTION_PREFIX}exam_paper_folders`,
   EXAM_PAPER_CHECKS: `${COLLECTION_PREFIX}exam_paper_checks`,
   LANGUAGE_ELECTIVE: `${COLLECTION_PREFIX}language_elective`,
+  /** 語言選修：一人主檔（B 方案），僅 edutrack_ 新路徑，不影響其他集合 */
+  LANGUAGE_ELECTIVE_STUDENTS: `${COLLECTION_PREFIX}language_elective_students`,
   /** 系統設定（如選修語言類別），單一 doc settings */
   SYSTEM: `${COLLECTION_PREFIX}system`,
   /** 學期／放假日設定（點名單用），doc id = 學年_學期，如 114_下學期 */

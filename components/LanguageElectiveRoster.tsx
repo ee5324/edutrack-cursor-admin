@@ -5,6 +5,7 @@ import {
   getLanguageElectiveRoster,
   getAllLanguageElectiveRosters,
   buildNameToLanguageFromRosters,
+  buildStudentIdToLanguageFromRosters,
   saveLanguageElectiveRoster,
   getLanguageOptions,
 } from '../services/api';
@@ -221,6 +222,17 @@ const LanguageElectiveRoster: React.FC = () => {
     });
   };
 
+  const updateStudentStudentId = (index: number, studentId: string) => {
+    setStudents((prev) => {
+      const next = [...prev];
+      if (next[index]) {
+        const t = studentId.trim();
+        next[index] = { ...next[index], studentId: t || undefined };
+      }
+      return next;
+    });
+  };
+
   const updateStudentSeat = (index: number, seat: string) => {
     setStudents((prev) => {
       const next = [...prev];
@@ -348,17 +360,22 @@ const LanguageElectiveRoster: React.FC = () => {
       const allRosters = await getAllLanguageElectiveRosters();
       const prevRoster = allRosters.find((r) => r.academicYear === prevYear);
       const nameToLanguage = prevRoster ? buildNameToLanguageFromRosters([prevRoster]) : {};
-      const matched = Object.keys(nameToLanguage).length;
+      const studentIdToLanguage = prevRoster ? buildStudentIdToLanguageFromRosters([prevRoster]) : {};
+      const matched = Object.keys(nameToLanguage).length + Object.keys(studentIdToLanguage).length;
       const nameKey = (name: string) => (name && String(name).trim()) || '';
       setStudents((prev) =>
-        prev.map((s) => ({
-          ...s,
-          language: isUnsetLanguage(s.language)
-            ? (nameToLanguage[nameKey(s.name)] ?? s.language)
-            : s.language,
-        }))
+        prev.map((s) => {
+          const sid = (s.studentId ?? '').trim();
+          const fromId = sid ? studentIdToLanguage[sid] : undefined;
+          const fromName = nameToLanguage[nameKey(s.name)];
+          const inherited = fromId ?? fromName;
+          return {
+            ...s,
+            language: isUnsetLanguage(s.language) ? (inherited ?? s.language) : s.language,
+          };
+        })
       );
-      if (matched === 0) setError(`${prevYear} 學年無名單可繼承，或姓名皆無對應。`);
+      if (matched === 0) setError(`${prevYear} 學年無名單可繼承，或學號／姓名皆無對應。`);
       else setError(null);
     } catch (e: any) {
       setError(e?.message || '繼承失敗');
@@ -563,11 +580,11 @@ const LanguageElectiveRoster: React.FC = () => {
                 type="button"
                 onClick={handleInheritLanguages}
                 disabled={inheriting || students.length === 0}
-                title="僅當選修語言為「無／未選」或未填時才從上一學年帶入；已有填寫則保留不覆蓋"
+                title="僅當選修語言為「無／未選」或未填時才從上一學年帶入；優先依學號對應，否則依姓名；已有填寫則保留不覆蓋"
                 className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 text-sm disabled:opacity-50"
               >
                 {inheriting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                依姓名繼承過往學年
+                依上一學年繼承語言
               </button>
               <button
                 type="button"
@@ -795,7 +812,8 @@ const LanguageElectiveRoster: React.FC = () => {
           )}
 
           <p className="mb-2 text-sm text-slate-600">
-            以下依班級分區顯示；可編輯班級、座號、姓名、選修語言、語言班別。篩選與分區以「儲存前」的資料為準，編輯後按「儲存至 Firebase」才會一併更新。
+            以下依班級分區顯示；可編輯班級、座號、學號、姓名、選修語言、語言班別。篩選與分區以「儲存前」的資料為準，編輯後按「儲存至 Firebase」才會一併更新。
+            若該生原為暫存主檔（無學號），補上學號後儲存會自動合併歷年資料到學號主檔並刪除舊的暫存文件。
           </p>
 
           <div className="overflow-x-auto max-h-[520px] overflow-y-auto border border-slate-200 rounded-lg">
@@ -829,6 +847,7 @@ const LanguageElectiveRoster: React.FC = () => {
                           </th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">班級</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">座號</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-600">學號</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">姓名</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">選修語言</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-600">語言班別</th>
@@ -859,6 +878,15 @@ const LanguageElectiveRoster: React.FC = () => {
                                 value={s.seat}
                                 onChange={(e) => updateStudentSeat(i, e.target.value)}
                                 className="border border-slate-200 rounded px-2 py-1 text-sm w-14 bg-white"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={s.studentId ?? ''}
+                                onChange={(e) => updateStudentStudentId(i, e.target.value)}
+                                placeholder="選填"
+                                className="border border-slate-200 rounded px-2 py-1 text-sm w-24 bg-white"
                               />
                             </td>
                             <td className="px-3 py-2">

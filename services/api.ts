@@ -21,6 +21,12 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { getDb, COLLECTIONS, BUDGET_PLAN_LEDGER_SUBCOLLECTION } from './firebase';
+import {
+  loadLanguageElectiveRosterBackend,
+  loadAllLanguageElectiveRostersBackend,
+  saveLanguageElectiveRosterBackend,
+} from './languageElectiveStudentBackend';
+
 import { DEFAULT_LANGUAGE_OPTIONS } from '../utils/languageOptions';
 import type {
   Student,
@@ -1367,44 +1373,18 @@ export async function mergeLanguageOptionsFromRosters(): Promise<string[]> {
 }
 
 // --- 學生語言選修登錄 (Language Elective) ---
-/** 以學年為 doc id（不分上下學期） */
-function languageElectiveDocId(academicYear: string) {
-  return academicYear;
-}
-
 export async function getLanguageElectiveRoster(academicYear: string): Promise<LanguageElectiveRosterDoc | null> {
   if (isSandbox()) return sandboxGetLanguageElectiveRoster(academicYear);
   const db = getDb();
   if (!db) return null;
-  const docSnap = await getDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, languageElectiveDocId(academicYear)));
-  if (!docSnap.exists()) return null;
-  const data = docSnap.data();
-  return {
-    academicYear: String(data.academicYear ?? academicYear),
-    semester: data.semester ?? '',
-    students: Array.isArray(data.students) ? data.students : [],
-    languageClassSettings: Array.isArray(data.languageClassSettings) ? data.languageClassSettings : undefined,
-    updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
-  };
+  return loadLanguageElectiveRosterBackend(db, academicYear);
 }
 
 export async function getAllLanguageElectiveRosters(): Promise<LanguageElectiveRosterDoc[]> {
   if (isSandbox()) return sandboxGetAllLanguageElectiveRosters();
   const db = getDb();
   if (!db) return [];
-  const snap = await getDocs(collection(db, COLLECTIONS.LANGUAGE_ELECTIVE));
-  return snap.docs
-    .map((d) => {
-      const data = d.data();
-      return {
-        academicYear: String(data.academicYear ?? d.id),
-        semester: data.semester ?? '',
-        students: Array.isArray(data.students) ? data.students : [],
-        languageClassSettings: Array.isArray(data.languageClassSettings) ? data.languageClassSettings : undefined,
-        updatedAt: data.updatedAt?.toDate?.()?.toISOString() ?? data.updatedAt,
-      };
-    })
-    .sort((a, b) => parseInt(b.academicYear, 10) - parseInt(a.academicYear, 10));
+  return loadAllLanguageElectiveRostersBackend(db);
 }
 
 // --- 學期／放假日設定 (點名單用) ---
@@ -1645,6 +1625,19 @@ export async function unlockExamSubmission(id: string, unlockedByEmail: string):
   });
 }
 
+/** 依學號繼承：從名單取得「學號 → 選修語言」（後出現覆蓋先出現） */
+export function buildStudentIdToLanguageFromRosters(rosters: LanguageElectiveRosterDoc[]): Record<string, string> {
+  const idToLang: Record<string, string> = {};
+  for (const r of rosters) {
+    for (const s of r.students || []) {
+      const id = (s.studentId && String(s.studentId).trim()) || '';
+      const lang = s.language != null ? String(s.language).trim() : '';
+      if (id) idToLang[id] = lang;
+    }
+  }
+  return idToLang;
+}
+
 /** 依姓名繼承：從過往學期名單取得「姓名 → 選修語言」對照（同一姓名取最近一筆）；姓名以 trim 比對。 */
 export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDoc[]): Record<string, string> {
   const nameToLang: Record<string, string> = {};
@@ -1658,29 +1651,6 @@ export function buildNameToLanguageFromRosters(rosters: LanguageElectiveRosterDo
   return nameToLang;
 }
 
-/** Firestore 不接受 undefined，寫入前將學生與班別設定中的 undefined 轉為可序列化值 */
-function sanitizeLanguageElectivePayload(
-  students: LanguageElectiveStudent[],
-  languageClassSettings?: LanguageClassSetting[]
-) {
-  const studentsPayload = students.map((s) => ({
-    className: s.className ?? '',
-    seat: s.seat ?? '',
-    name: s.name ?? '',
-    language: s.language ?? '',
-    languageClass: s.languageClass ?? null,
-  }));
-  const settingsPayload =
-    languageClassSettings?.map((s) => ({
-      id: s.id ?? '',
-      name: s.name ?? '',
-      classroom: s.classroom ?? null,
-      time: s.time ?? null,
-      teacher: s.teacher ?? null,
-    })) ?? undefined;
-  return { studentsPayload, settingsPayload };
-}
-
 export async function saveLanguageElectiveRoster(
   academicYear: string,
   students: LanguageElectiveStudent[],
@@ -1692,15 +1662,7 @@ export async function saveLanguageElectiveRoster(
   }
   const db = getDb();
   if (!db) throw new Error('Firebase 未初始化');
-  const id = languageElectiveDocId(academicYear);
-  const { studentsPayload, settingsPayload } = sanitizeLanguageElectivePayload(students, languageClassSettings);
-  const payload: Record<string, unknown> = {
-    academicYear,
-    students: studentsPayload,
-    updatedAt: serverTimestamp(),
-  };
-  if (settingsPayload !== undefined) payload.languageClassSettings = settingsPayload;
-  await setDoc(doc(db, COLLECTIONS.LANGUAGE_ELECTIVE, id), payload, { merge: true });
+  await saveLanguageElectiveRosterBackend(db, academicYear, students, languageClassSettings);
 }
 
 // --- Setup (GAS：檢查 Drive 等；Sandbox 時回傳說明) ---

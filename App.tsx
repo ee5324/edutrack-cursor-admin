@@ -173,18 +173,30 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ currentUser, currentAccess })
                 const list = rosterMapToStudents(roster, nameToLanguage, defaultLang);
                 const doc = await getLanguageElectiveRoster(uploadYear);
                 const languageClassSettings = doc?.languageClassSettings ?? [];
+                const rosterRowKey = (x: (typeof list)[0]) => {
+                    const sid = (x.studentId ?? '').trim();
+                    if (sid) return `id:${sid}`;
+                    const pid = (x.profileDocId ?? '').trim();
+                    if (pid) return `p:${pid}`;
+                    return `${x.className}-${x.seat}`;
+                };
                 const currentStudents = doc?.students ?? [];
                 const currentMap = new Map<string, (typeof currentStudents)[0]>();
                 for (const s of currentStudents) {
-                    currentMap.set(`${s.className}-${s.seat}`, s);
+                    currentMap.set(rosterRowKey(s), s);
                 }
                 const merged: (typeof list) = [];
                 let added = 0;
                 for (const s of list) {
-                    const key = `${s.className}-${s.seat}`;
+                    const key = rosterRowKey(s);
                     const existing = currentMap.get(key);
                     if (existing) {
-                        merged.push(existing);
+                        merged.push({
+                            ...existing,
+                            className: s.className,
+                            seat: s.seat,
+                            name: s.name,
+                        });
                         currentMap.delete(key);
                     } else {
                         merged.push(s);
