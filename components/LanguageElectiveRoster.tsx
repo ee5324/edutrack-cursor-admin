@@ -11,6 +11,13 @@ import {
 } from '../services/api';
 import { loadLanguageOptions } from '../utils/languageOptions';
 
+/** 跨學年衝突警示：辨識同一學生（優先學號，否則 trim 後姓名） */
+function crossYearStableKey(s: LanguageElectiveStudent): string {
+  const id = (s.studentId ?? '').trim();
+  if (id) return `id:${id}`;
+  return `n:${(s.name ?? '').trim()}`;
+}
+
 const LanguageElectiveRoster: React.FC = () => {
   const [academicYear, setAcademicYear] = useState('114');
   const [students, setStudents] = useState<LanguageElectiveStudent[]>([]);
@@ -29,6 +36,8 @@ const LanguageElectiveRoster: React.FC = () => {
   const [inheriting, setInheriting] = useState(false);
   /** 本 session 內手動改過選修語言的列索引，繼承時不覆蓋 */
   const [manualEditIndices, setManualEditIndices] = useState<Set<number>>(new Set());
+  /** 跨學年語言衝突：已按「以本學年為主」關閉警示的學生鍵（載入名單時清空） */
+  const [crossYearDismissedKeys, setCrossYearDismissedKeys] = useState<Set<string>>(() => new Set());
   /** 搜尋：姓名或座號（空白則顯示全部）；輸入值，即時顯示於 input */
   const [searchQuery, setSearchQuery] = useState('');
   /** 搜尋篩選值：debounce 後才套用，避免每鍵觸發 1500+ 筆重算造成 INP 卡頓 */
@@ -61,7 +70,10 @@ const LanguageElectiveRoster: React.FC = () => {
 
   const hasRoster = students.length > 0;
   const classNames = useMemo(
-    () => Array.from(new Set((filterSnapshot.length ? filterSnapshot : students).map((s) => s.className))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    () =>
+      Array.from(new Set((filterSnapshot.length ? filterSnapshot : students).map((s) => s.className))).sort((a, b) =>
+        String(a).localeCompare(String(b), undefined, { numeric: true })
+      ),
     [filterSnapshot, students]
   );
   const languageClassNames = useMemo(() => languageClassSettings.map((s) => s.name), [languageClassSettings]);
@@ -152,6 +164,7 @@ const LanguageElectiveRoster: React.FC = () => {
     }
     const result: { index: number; name: string; currentLang: string; others: { year: string; lang: string }[] }[] = [];
     students.forEach((s, i) => {
+      if (crossYearDismissedKeys.has(crossYearStableKey(s))) return;
       const k = (s.name ?? '').trim();
       const others = nameToOtherLangs.get(k);
       if (!others?.length) return;
@@ -161,7 +174,7 @@ const LanguageElectiveRoster: React.FC = () => {
       if (different.length > 0) result.push({ index: i, name: s.name || k, currentLang, others: different });
     });
     return result;
-  }, [allRosters, academicYear, students]);
+  }, [allRosters, academicYear, students, crossYearDismissedKeys]);
 
   /** 除閩南語外，已選其他語言但未設定語言班別者（閩南語可免填，不顯示） */
   const noLanguageClassWarnings = useMemo(() => {
@@ -194,6 +207,7 @@ const LanguageElectiveRoster: React.FC = () => {
       setFilterSnapshot(list);
       setLanguageClassSettings(doc?.languageClassSettings ?? []);
       setManualEditIndices(new Set());
+      setCrossYearDismissedKeys(new Set());
     } catch (e: any) {
       setError(e?.message || '載入失敗');
     } finally {
@@ -249,7 +263,20 @@ const LanguageElectiveRoster: React.FC = () => {
     });
   };
 
-  /** 解決衝突：將同一姓名之所有列改為指定選修語言（以該年度為主），並標記為手動編輯 */
+  /** 使用者確認「以本學年為主」：不修改他學年資料，僅關閉本 session 的跨學年衝突提示 */
+  const dismissCrossYearKeepCurrent = (name: string) => {
+    const trimmedName = (name ?? '').trim();
+    if (!trimmedName) return;
+    setCrossYearDismissedKeys((prev) => {
+      const next = new Set(prev);
+      students.forEach((s) => {
+        if ((s.name ?? '').trim() === trimmedName) next.add(crossYearStableKey(s));
+      });
+      return next;
+    });
+  };
+
+  /** 解決衝突：將同一姓名之所有列改為指定選修語言（採用所選學年），並標記為手動編輯；警示會在與他學年語言一致後自動消失 */
   const applyConflictResolution = (name: string, language: string) => {
     const trimmedName = (name ?? '').trim();
     if (!trimmedName) return;
@@ -258,12 +285,12 @@ const LanguageElectiveRoster: React.FC = () => {
         (s.name ?? '').trim() === trimmedName ? { ...s, language } : s
       )
     );
-    setManualEditIndices((prev) => {
-      const next = new Set(prev);
+    setManualEditIndices((p) => {
+      const n = new Set(p);
       students.forEach((s, i) => {
-        if ((s.name ?? '').trim() === trimmedName) next.add(i);
+        if ((s.name ?? '').trim() === trimmedName) n.add(i);
       });
-      return next;
+      return n;
     });
   };
 
@@ -757,7 +784,7 @@ const LanguageElectiveRoster: React.FC = () => {
                       <span className="inline-flex flex-wrap gap-1">
                         <button
                           type="button"
-                          onClick={() => applyConflictResolution(d.name, d.currentLang ?? '')}
+                          onClick={() => dismissCrossYearKeepCurrent(d.name)}
                           className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
                         >
                           以本學年為主

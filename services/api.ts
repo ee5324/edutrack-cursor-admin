@@ -1010,8 +1010,9 @@ export async function saveTodo(payload: Partial<TodoItem> & { date: string; titl
   const topic = (payload.topic ?? '').trim();
   const seriesId = payload.seriesId ?? (payload as any).isSeries ? id : '';
 
+  const todoFlat = todoToDoc(payload);
   const docData = {
-    ...todoToDoc(payload),
+    ...todoFlat,
     seriesId: payload.seriesId ?? seriesId,
     topic,
     academicYear: payload.academicYear ?? '114',
@@ -1028,7 +1029,10 @@ export async function saveTodo(payload: Partial<TodoItem> & { date: string; titl
           where('academicYear', '==', payload.academicYear ?? '114')
         )
       );
-      const batchData = { commonAttachments: docData.commonAttachments, commonContacts: docData.commonContacts };
+      const batchData = {
+        commonAttachments: todoFlat.commonAttachments,
+        commonContacts: todoFlat.commonContacts,
+      };
       for (const d of all.docs) {
         if (d.id !== id) await updateDoc(d.ref, batchData);
       }

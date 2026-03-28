@@ -43,7 +43,10 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
   }, [academicYear]);
 
   const classNames = useMemo(
-    () => Array.from(new Set(students.map((s) => s.className))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    () =>
+      Array.from(new Set(students.map((s) => s.className))).sort((a, b) =>
+        String(a).localeCompare(String(b), undefined, { numeric: true })
+      ),
     [students]
   );
   const filteredStudents = useMemo(() => {

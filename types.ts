@@ -219,6 +219,8 @@ export interface TodoItem {
   attachments: Attachment[]; // 個別附件列表
   commonAttachments?: Attachment[]; // 新增: 系列共用附件列表
   memo?: string;
+  /** Firestore 建立時間（ISO 字串），讀寫文件時使用 */
+  createdAt?: string;
 }
 
 /**

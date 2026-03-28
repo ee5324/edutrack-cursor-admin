@@ -26,7 +26,7 @@ const ExamSubmitPublicPage: React.FC = () => {
   const [roster, setRoster] = useState<LanguageElectiveStudent[]>([]);
   const classOptions = useMemo(() => {
     const set = new Set(roster.map((s) => (s.className ?? '').trim()).filter(Boolean));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-TW', { numeric: true }));
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'zh-TW', { numeric: true }));
   }, [roster]);
 
   const [className, setClassName] = useState('');
@@ -50,7 +50,13 @@ const ExamSubmitPublicPage: React.FC = () => {
 
   const [selected, setSelected] = useState<Record<string, ExamSubmissionStudent>>({});
 
-  const selectedList = useMemo(() => Object.values(selected).sort((a, b) => (a.seat ?? '').localeCompare(b.seat ?? '', undefined, { numeric: true })), [selected]);
+  const selectedList = useMemo(
+    () =>
+      (Object.values(selected) as ExamSubmissionStudent[]).sort((a, b) =>
+        String(a.seat ?? '').localeCompare(String(b.seat ?? ''), undefined, { numeric: true })
+      ),
+    [selected]
+  );
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
