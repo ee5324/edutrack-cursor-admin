@@ -3,7 +3,7 @@
  * 與學生名單（語言選修登錄）整合，供其他功能從名單拖曳加入
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Loader2, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { getLanguageElectiveRoster } from '../services/api';
 import type { LanguageElectiveStudent } from '../types';
 
@@ -27,8 +27,10 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
   const [students, setStudents] = useState<LanguageElectiveStudent[]>([]);
   const [loading, setLoading] = useState(false);
   const [classFilter, setClassFilter] = useState<string>('');
+  const [rosterSearch, setRosterSearch] = useState('');
 
   useEffect(() => {
+    setRosterSearch('');
     if (!academicYear.trim()) {
       setStudents([]);
       return;
@@ -50,9 +52,16 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
     [students]
   );
   const filteredStudents = useMemo(() => {
-    if (!classFilter) return students;
-    return students.filter((s) => s.className === classFilter);
-  }, [students, classFilter]);
+    let list = !classFilter ? students : students.filter((s) => s.className === classFilter);
+    const q = rosterSearch.trim();
+    if (!q) return list;
+    return list.filter((s) => {
+      const name = String(s.name ?? '');
+      const seat = String(s.seat ?? '');
+      const cn = String(s.className ?? '');
+      return name.includes(q) || seat.includes(q) || cn.includes(q);
+    });
+  }, [students, classFilter, rosterSearch]);
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
@@ -80,7 +89,7 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
             </p>
           ) : (
             <>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
                 <label className="text-xs text-slate-600 whitespace-nowrap">班級</label>
                 <select
                   value={classFilter}
@@ -93,6 +102,19 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
                   ))}
                 </select>
               </div>
+              <div className="mb-2">
+                <label className="block text-xs text-slate-600 mb-0.5">搜尋（姓名、座號或班級關鍵字）</label>
+                <div className="relative">
+                  <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+                  <input
+                    type="search"
+                    value={rosterSearch}
+                    onChange={(e) => setRosterSearch(e.target.value)}
+                    placeholder="例：明、12、101"
+                    className="w-full pl-8 pr-2 py-1.5 border border-slate-200 rounded text-xs bg-white"
+                  />
+                </div>
+              </div>
               <div className="max-h-48 overflow-y-auto border border-slate-200 rounded bg-white">
                 <table className="w-full text-xs">
                   <thead className="bg-slate-100 sticky top-0">
@@ -103,7 +125,14 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredStudents.map((s, i) => (
+                    {filteredStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-2 py-4 text-center text-slate-500 text-xs">
+                          {rosterSearch.trim() ? '無符合搜尋的學生，請改關鍵字或班級篩選。' : '（無資料）'}
+                        </td>
+                      </tr>
+                    ) : (
+                    filteredStudents.map((s, i) => (
                       <tr
                         key={`${s.className}-${s.seat}-${s.name}-${i}`}
                         draggable
@@ -117,7 +146,8 @@ export const RosterStudentSource: React.FC<RosterStudentSourceProps> = ({
                         <td className="px-2 py-1.5 text-slate-700">{s.seat}</td>
                         <td className="px-2 py-1.5 text-slate-700">{s.name}</td>
                       </tr>
-                    ))}
+                    ))
+                    )}
                   </tbody>
                 </table>
               </div>

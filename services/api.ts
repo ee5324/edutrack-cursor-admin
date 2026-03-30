@@ -366,6 +366,16 @@ export async function getAllKnownStudents(): Promise<{ className: string; name: 
     if (Array.isArray(students)) students.forEach((s: any) => add(s.className, s.name));
   });
 
+  // 語言選修「學生名單」各學年（補齊自動完成來源，避免僅課程學生／舊頒獎紀錄才有建議）
+  try {
+    const rosters = await getAllLanguageElectiveRosters();
+    rosters.forEach((r) => {
+      (r.students ?? []).forEach((s) => add(String(s.className ?? ''), String(s.name ?? '')));
+    });
+  } catch {
+    /* ignore roster merge errors */
+  }
+
   const result = Array.from(map.values());
   result.sort((a, b) => {
     if (a.className !== b.className) return a.className.localeCompare(b.className, undefined, { numeric: true });

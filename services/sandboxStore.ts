@@ -327,22 +327,28 @@ export function sandboxSaveAwardRecord(payload: { date: string; title: string; s
   return Promise.resolve({ success: true, id });
 }
 
-export function sandboxGetAllKnownStudents(): Promise<{ className: string; name: string }[]> {
+export async function sandboxGetAllKnownStudents(): Promise<{ className: string; name: string }[]> {
   const map = new Map<string, { className: string; name: string }>();
-  store.students.forEach((s) => {
-    if (s.className && s.name) map.set(`${s.className}_${s.name}`, { className: s.className, name: s.name });
-  });
+  const add = (className: string, name: string) => {
+    const cn = String(className ?? '').trim();
+    const nm = String(name ?? '').trim();
+    if (!cn || !nm) return;
+    map.set(`${cn}_${nm}`, { className: cn, name: nm });
+  };
+  store.students.forEach((s) => add(s.className, s.name));
   store.awards.forEach((a) => {
-    (a.students || []).forEach((s: any) => {
-      if (s.className && s.name) map.set(`${s.className}_${s.name}`, { className: s.className, name: s.name });
-    });
+    (a.students || []).forEach((s: any) => add(s.className, s.name));
+  });
+  const rosters = await sandboxGetAllLanguageElectiveRosters();
+  rosters.forEach((r) => {
+    (r.students ?? []).forEach((s) => add(s.className, s.name));
   });
   const result = Array.from(map.values());
   result.sort((a, b) => {
     if (a.className !== b.className) return a.className.localeCompare(b.className, undefined, { numeric: true });
     return a.name.localeCompare(b.name);
   });
-  return Promise.resolve(result);
+  return result;
 }
 
 // --- Vendors ---

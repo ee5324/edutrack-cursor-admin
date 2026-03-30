@@ -7,6 +7,42 @@ import * as XLSX from 'xlsx';
 import { getAllKnownStudents, getAwardHistory, saveAwardRecord, createAwardDocs, createAwardSummaryDocs } from './services/api';
 import RosterStudentSource, { ROSTER_DRAG_TYPE } from './components/RosterStudentSource';
 
+const AWARD_SUGGESTION_LIMIT = 25;
+
+type AwardKnownStudent = { className: string; name: string };
+
+function scoreAwardStudentMatch(qRaw: string, s: AwardKnownStudent): number {
+    const q = qRaw.trim();
+    if (!q) return 999;
+    const name = (s.name ?? '').trim();
+    const cn = (s.className ?? '').trim();
+    if (!name && !cn) return 999;
+    if (name === q || cn === q) return 0;
+    if (name.startsWith(q) || cn.startsWith(q)) return 1;
+    if (name.includes(q)) return 2;
+    if (cn.includes(q)) return 3;
+    const compact = `${cn}${name}`.replace(/\s+/g, '');
+    const qc = q.replace(/\s+/g, '');
+    if (qc && compact.includes(qc)) return 4;
+    return 999;
+}
+
+function filterAwardStudentSuggestions(known: AwardKnownStudent[], query: string): AwardKnownStudent[] {
+    const q = query.trim();
+    if (!q) return [];
+    return known
+        .map((s) => ({ s, score: scoreAwardStudentMatch(q, s) }))
+        .filter((x) => x.score < 900)
+        .sort((a, b) => {
+            if (a.score !== b.score) return a.score - b.score;
+            const c = a.s.className.localeCompare(b.s.className, undefined, { numeric: true });
+            if (c !== 0) return c;
+            return a.s.name.localeCompare(b.s.name, 'zh-TW');
+        })
+        .slice(0, AWARD_SUGGESTION_LIMIT)
+        .map((x) => x.s);
+}
+
 const AwardGenerator: React.FC = () => {
     // Input States
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -98,9 +134,9 @@ const AwardGenerator: React.FC = () => {
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setManualInput(prev => ({ ...prev, name: val }));
-        
+
         if (val.trim()) {
-            const matches = knownStudents.filter(s => s.name.includes(val)).slice(0, 5);
+            const matches = filterAwardStudentSuggestions(knownStudents, val);
             setFilteredSuggestions(matches);
             setShowSuggestions(matches.length > 0);
         } else {
@@ -117,7 +153,7 @@ const AwardGenerator: React.FC = () => {
         const val = e.target.value;
         setGroupSearchName(val);
         if (val.trim()) {
-            const matches = knownStudents.filter(s => s.name.includes(val)).slice(0, 5);
+            const matches = filterAwardStudentSuggestions(knownStudents, val);
             setFilteredSuggestions(matches);
             setShowSuggestions(matches.length > 0);
         } else {
